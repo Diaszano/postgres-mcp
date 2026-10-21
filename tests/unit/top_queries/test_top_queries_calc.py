@@ -252,3 +252,30 @@ async def test_resource_queries_pg13(mock_pg13_driver, mock_extension_installed)
     assert "mean_exec_time" in call_args, "Should use mean_exec_time for PG13"
     # wal_bytes should be the actual column for PG13
     assert "wal_bytes" in call_args, "Should use wal_bytes column for PG13"
+
+
+_DBID_FILTER = "WHERE dbid = (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database())"
+
+
+def _sql(driver) -> str:
+    return " ".join(str(driver.execute_query.call_args.args[0]).split())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sort_by", ["total", "mean"])
+async def test_top_queries_time_filters_current_dbid(mock_pg13_driver, mock_extension_installed, sort_by):
+    await TopQueriesCalc(sql_driver=mock_pg13_driver).get_top_queries_by_time(limit=3, sort_by=sort_by)
+    sql = _sql(mock_pg13_driver)
+    assert _DBID_FILTER in sql
+    assert sql.index(_DBID_FILTER) < sql.index("ORDER BY") < sql.index("LIMIT")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("driver_fixture", ["mock_pg12_driver", "mock_pg13_driver"])
+async def test_top_queries_resources_filters_before_window_denominators(request, driver_fixture, mock_extension_installed):
+    driver = request.getfixturevalue(driver_fixture)
+    await TopQueriesCalc(sql_driver=driver).get_top_resource_queries(frac_threshold=0.05)
+    sql = _sql(driver)
+    # Filter lives in the CTE source, so every SUM(...) OVER () only sees the current database.
+    assert _DBID_FILTER in sql
+    assert sql.index("FROM pg_stat_statements") < sql.index(_DBID_FILTER) < sql.index("SELECT query, calls, rows, total_exec_time,")

@@ -511,10 +511,11 @@ async def execute_sql(
 async def analyze_workload_indexes(
     max_index_size_mb: int = Field(description="Max index size in MB", default=10000),
     method: Literal["dta", "llm"] = Field(description="Method to use for analysis", default="dta"),
+    database: Annotated[str | None, Field(description="Database to use; omit for the default database")] = None,
 ) -> ResponseType:
     """Analyze frequently executed queries in the database and recommend optimal indexes."""
     try:
-        async with get_sql_driver() as sql_driver:
+        async with get_sql_driver(database) as sql_driver:
             if method == "dta":
                 index_tuning = DatabaseTuningAdvisor(sql_driver)
             else:
@@ -539,6 +540,7 @@ async def analyze_query_indexes(
     queries: list[str] = Field(description="List of Query strings to analyze"),
     max_index_size_mb: int = Field(description="Max index size in MB", default=10000),
     method: Literal["dta", "llm"] = Field(description="Method to use for analysis", default="dta"),
+    database: Annotated[str | None, Field(description="Database to use; omit for the default database")] = None,
 ) -> ResponseType:
     """Analyze a list of SQL queries and recommend optimal indexes."""
     if len(queries) == 0:
@@ -547,7 +549,7 @@ async def analyze_query_indexes(
         return format_error_response(f"Please provide a list of up to {MAX_NUM_INDEX_TUNING_QUERIES} queries to analyze.")
 
     try:
-        async with get_sql_driver() as sql_driver:
+        async with get_sql_driver(database) as sql_driver:
             if method == "dta":
                 index_tuning = DatabaseTuningAdvisor(sql_driver)
             else:
@@ -609,9 +611,10 @@ async def get_top_queries(
         default="resources",
     ),
     limit: int = Field(description="Number of queries to return when ranking based on mean_time or total_time", default=10),
+    database: Annotated[str | None, Field(description="Database to use; omit for the default database")] = None,
 ) -> ResponseType:
     try:
-        async with get_sql_driver() as sql_driver:
+        async with get_sql_driver(database) as sql_driver:
             top_queries_tool = TopQueriesCalc(sql_driver=sql_driver)
 
             if sort_by == "resources":

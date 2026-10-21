@@ -127,6 +127,7 @@ class TopQueriesCalc:
                     {cols.mean_time},
                     rows
                 FROM pg_stat_statements
+                WHERE dbid = (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database())
                 ORDER BY {order_by_column} DESC
                 LIMIT {{}};
             """,
@@ -207,6 +208,7 @@ class TopQueriesCalc:
                             AS shared_blks_dirtied_frac,
                         {cols.wal_bytes_frac}
                     FROM pg_stat_statements
+                    WHERE dbid = (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database())
                 )
                 SELECT
                     query,

@@ -1287,3 +1287,12 @@ async def cleanup_pools():
 
 if __name__ == "__main__":
     pytest.main()
+
+
+@pytest.mark.asyncio
+async def test_dta_workload_filters_current_dbid(async_sql_driver, create_dta):
+    await create_dta._get_query_stats_direct(min_calls=5, min_avg_time_ms=1.0, limit=7)
+    sql = " ".join(str(async_sql_driver.execute_query.call_args.args[0]).split())
+    dbid_filter = "dbid = (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database())"
+    assert dbid_filter in sql
+    assert sql.index("FROM pg_stat_statements") < sql.index(dbid_filter) < sql.index("ORDER BY") < sql.index("LIMIT")

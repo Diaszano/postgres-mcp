@@ -542,3 +542,46 @@ def test_execute_sql_and_explain_signatures_keep_legacy_defaults():
     assert explain_params["analyze"].default.default is False
     assert explain_params["hypothetical_indexes"].default.default == []
     assert explain_params["database"].default is None
+
+
+# --- Task 13: query statistics and index tuning use the selected database's driver ---
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["dta", "llm"])
+async def test_index_tools_use_database_specific_driver(method):
+    from postgres_mcp.server import analyze_query_indexes
+    from postgres_mcp.server import analyze_workload_indexes
+    from postgres_mcp.server import get_top_queries
+
+    selected = MagicMock(name="selected_driver")
+    requested: list[str | None] = []
+
+    @asynccontextmanager
+    async def fake_get_sql_driver(database=None):
+        requested.append(database)
+        yield selected
+
+    presentation = MagicMock()
+    presentation.analyze_workload = AsyncMock(return_value="ok")
+    presentation.analyze_queries = AsyncMock(return_value="ok")
+    top = MagicMock()
+    top.get_top_resource_queries = AsyncMock(return_value="ok")
+    top.get_top_queries_by_time = AsyncMock(return_value="ok")
+    with (
+        patch("postgres_mcp.server.get_sql_driver", fake_get_sql_driver),
+        patch("postgres_mcp.server.DatabaseTuningAdvisor") as dta,
+        patch("postgres_mcp.server.LLMOptimizerTool") as llm,
+        patch("postgres_mcp.server.TextPresentation", return_value=presentation) as text_presentation,
+        patch("postgres_mcp.server.TopQueriesCalc", return_value=top) as top_calc,
+    ):
+        await analyze_workload_indexes(method=method, database="app_two")
+        await analyze_query_indexes(["select 1"], method=method, database="app_two")
+        await get_top_queries(sort_by="resources", database="app_two")
+        await get_top_queries(sort_by="mean_time", limit=3, database="app_two")
+
+    assert requested == ["app_two"] * 4
+    tuner = dta if method == "dta" else llm
+    assert [c.args[0] for c in tuner.call_args_list] == [selected, selected]
+    assert [c.args[0] for c in text_presentation.call_args_list] == [selected, selected]
+    assert [c.kwargs["sql_driver"] for c in top_calc.call_args_list] == [selected, selected]

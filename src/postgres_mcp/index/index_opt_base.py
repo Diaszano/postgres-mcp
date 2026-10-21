@@ -421,7 +421,8 @@ class IndexTuningBase(ABC):
         query = """
         SELECT queryid, query, calls, total_exec_time/calls as avg_exec_time
         FROM pg_stat_statements
-        WHERE calls >= {}
+        WHERE dbid = (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database())
+        AND calls >= {}
         AND total_exec_time/calls >= {}
         ORDER BY total_exec_time DESC
         LIMIT {}
