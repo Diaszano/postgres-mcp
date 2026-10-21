@@ -155,37 +155,53 @@ async def test_revoke_access_updates_catalog_without_cross_access(env: Env):
         assert "not available" in _text(await server.execute_sql("SELECT 1", "analytics"))
         assert await _current("app_development") == "app_development"
         assert await _current("app_testing") == "app_testing"
-        assert await server.list_databases() and "analytics" not in await _db_names()
+        rows = json.loads(_text(await server.list_databases()))
+        assert [r["name"] for r in rows] == ["app_development", "app_testing"]
+        assert {r["name"]: r["is_default"] for r in rows} == {"app_development": False, "app_testing": True}
     finally:
         with env.pg.admin() as conn:
             conn.execute(sql.SQL("GRANT CONNECT ON DATABASE analytics TO {}").format(sql.Identifier(ROLE)))
 
 
 async def test_all_nine_tools_accept_explicit_database(env: Env):
-    queries = ["SELECT * FROM development_marker WHERE id = 1"]
-    for name, marker in (("app_development", "development_marker"), ("app_testing", "testing_marker")):
-        calls: dict[str, Any] = {
-            "list_schemas": await server.list_schemas(name),
-            "list_objects": await server.list_objects("public", "table", name),
-            "get_object_details": await server.get_object_details("public", marker, "table", name),
-            "explain_query": await server.explain_query(f"SELECT * FROM {marker}", False, [], name),
-            "execute_sql": await server.execute_sql(f"SELECT label FROM {marker}", name),
-            "analyze_workload_indexes": await server.analyze_workload_indexes(10000, "dta", name),
-            "analyze_query_indexes": await server.analyze_query_indexes(
-                [q.replace("development", name.removeprefix("app_")) for q in queries], 10000, "dta", name
-            ),
-            "analyze_db_health": await server.analyze_db_health("connection,constraint", name),
-            "get_top_queries": await server.get_top_queries("total_time", 5, name),
-        }
-        assert len(calls) == 9
-        for tool, response in calls.items():
-            text = _text(response)
-            if tool == "get_top_queries" and name == "app_testing":
-                assert "pg_stat_statements" in text  # extension is absent there: specific warning, not a crash
-                continue
-            assert not text.startswith("Error:"), f"{tool} on {name}: {text[:200]}"
-        assert marker in _text(calls["list_objects"]) and marker in _text(calls["get_object_details"])
-        assert name in _text(calls["execute_sql"])
+    # Per-database fingerprints, created by the admin connection: a schema and a query workload on its own marker table.
+    fingerprints = {"app_development": "dev", "app_testing": "testing"}
+    for name, tag in fingerprints.items():
+        with env.pg.admin(name) as conn:
+            conn.execute(sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(sql.Identifier(f"schema_{tag}")))
+            # information_schema.schemata only lists schemas the role can use.
+            conn.execute(sql.SQL("GRANT USAGE ON SCHEMA {} TO {}").format(sql.Identifier(f"schema_{tag}"), sql.Identifier(ROLE)))
+    with env.pg.admin("app_development") as conn:
+        conn.execute("DROP EXTENSION IF EXISTS hypopg")  # deterministic: the analyze tools report it missing per database
+    try:
+        for name, tag in fingerprints.items():
+            other = next(t for t in fingerprints.values() if t != tag)
+            marker = name.removeprefix("app_") + "_marker"
+            marker = name.removeprefix("app_") + "_marker"
+            await server.execute_sql(f"SELECT id, label FROM {marker} WHERE id = 1", name)  # workload only in this database
+            schemas = _text(await server.list_schemas(name))
+            assert f"schema_{tag}" in schemas and f"schema_{other}" not in schemas
+            assert [o["name"] for o in _rows(await server.list_objects("public", "table", name))] == [marker]
+            details = _text(await server.get_object_details("public", marker, "table", name))
+            assert f"'name': '{marker}'" in details and f"{next(n for n in fingerprints if n != name).removeprefix('app_')}_marker" not in details
+            assert f"on {marker}" in _text(await server.explain_query(f"SELECT * FROM {marker}", False, [], name))
+            assert _rows(await server.execute_sql(f"SELECT label FROM {marker}", name)) == [{"label": name}]
+            # Without hypopg both analyzers report it missing, naming the selected database.
+            workload = _text(await server.analyze_workload_indexes(10000, "dta", name))
+            assert f"database '{name}'" in workload and "hypopg" in workload
+            queries = _text(await server.analyze_query_indexes([f"SELECT * FROM {marker}"], 10000, "dta", name))
+            assert f"database '{name}'" in queries and "hypopg" in queries
+            health = _text(await server.analyze_db_health("connection,constraint", name))
+            assert f"[database-scoped: {name}]" in health and "[instance-wide]" in health
+            top = _text(await server.get_top_queries("total_time", 100, name))
+            if name == "app_development":
+                assert "FROM development_marker WHERE id" in top and "testing_marker" not in top
+            else:
+                assert "pg_stat_statements extension is required" in top
+    finally:
+        for name, tag in fingerprints.items():
+            with env.pg.admin(name) as conn:
+                conn.execute(sql.SQL("DROP SCHEMA IF EXISTS {}").format(sql.Identifier(f"schema_{tag}")))
 
 
 async def test_parallel_tools_keep_context(env: Env):
@@ -225,7 +241,9 @@ async def test_pool_limit_smaller_than_database_count(multidb_postgres: Any, mon
         for name in ("app_development", "app_testing", "analytics", "app_development"):  # idle pools are evicted (LRU)
             assert await _current(name) == name
         states = {r["name"]: r["connection_state"] for r in json.loads(_text(await server.list_databases()))}
-        assert list(states.values()).count("connected") <= 2
+        # LRU: analytics evicted app_development, then app_development evicted app_testing.
+        assert states == {"analytics": "connected", "app_development": "connected", "app_testing": "not_connected"}
+        assert await _db_names() == sorted(VISIBLE)  # evicted databases stay authorized
     finally:
         await env.registry.close_all()
 
