@@ -30,8 +30,8 @@ def test_explicit_unrestricted_overrides():
 
 
 def test_uri_env_takes_precedence_and_positional_fallback():
-    assert parse_database_config({"DATABASE_URI": URI}, "postgresql://x/other", None).database_uri == URI
-    assert parse_database_config({}, "postgresql://x/other", None).database_uri == "postgresql://x/other"
+    assert parse_database_config({"DATABASE_URI": URI}, "postgresql://x/other", None).bootstrap_uri == URI
+    assert parse_database_config({}, "postgresql://x/other", None).bootstrap_uri == "postgresql://x/other"
     with pytest.raises(ValueError, match="DATABASE_URI"):
         parse_database_config({}, None, None)
 
@@ -150,7 +150,7 @@ def test_conninfo_special_name_is_not_uri_injection():
 
 
 def test_conninfo_never_logs_secret():
-    cfg = replace(_cfg(URI), database_uri="postgresql://u:s3cr3tPW@[host/db")  # bypasses parse-time check
+    cfg = replace(_cfg(URI), bootstrap_uri="postgresql://u:s3cr3tPW@[host/db")  # bypasses parse-time check
     with pytest.raises(ValueError) as exc:
         build_database_conninfo(cfg, "badname")
     assert "s3cr3tPW" not in str(exc.value)

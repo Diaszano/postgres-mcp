@@ -13,7 +13,7 @@ _BOOLS = {"true": True, "1": True, "yes": True, "false": False, "0": False, "no"
 
 @dataclass(frozen=True)
 class DatabaseConfig:
-    database_uri: str
+    bootstrap_uri: str
     auto_discover: bool
     default_database: str | None
     allowed_databases: tuple[str, ...]
@@ -105,7 +105,7 @@ def build_database_conninfo(config: DatabaseConfig, name: str) -> str:
     Authorization is the caller's job (registry, after catalog.authorize).
     """
     try:
-        return make_conninfo(config.database_uri, dbname=name)
+        return make_conninfo(config.bootstrap_uri, dbname=name)
     except (ProgrammingError, ValueError):
         # Fixed message: psycopg's text may echo the DSN or the database name.
         raise ValueError("Could not build a connection string for the requested database") from None
