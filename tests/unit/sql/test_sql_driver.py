@@ -327,27 +327,15 @@ async def test_execute_query_from_pool(mock_db_pool):
 
 
 @pytest.mark.asyncio
-async def test_connection_error_marks_pool_invalid(mock_db_pool):
-    """Test that connection errors mark the pool as invalid."""
+async def test_connection_error_propagates(mock_db_pool):
+    """Connection errors from pool_connect propagate to the caller."""
     db_pool, connection, cursor = mock_db_pool
-
-    # Configure pool_connect to raise an exception
     db_pool.pool_connect.side_effect = Exception("Connection failed")
 
-    # Create SqlDriver with the mocked pool
     driver = SqlDriver(conn=db_pool)
 
-    # Execute a query that will fail due to connection error
-    with pytest.raises(Exception):
+    with pytest.raises(Exception, match="Connection failed"):
         await driver.execute_query("SELECT * FROM test")
-
-    # Make pool invalid manually (since we're bypassing the actual method)
-    db_pool._is_valid = False
-    db_pool._last_error = "Connection failed"
-
-    # Verify pool was marked as invalid
-    assert db_pool._is_valid is False
-    assert isinstance(db_pool._last_error, str)
 
 
 @pytest.mark.asyncio
@@ -371,7 +359,9 @@ async def test_engine_url_connection():
 async def test_sql_syntax_error_does_not_invalidate_pool():
     """An ordinary SQL error (missing column) must leave the pool usable."""
     cursor = MagicMock()
-    cursor.execute = AsyncMock(side_effect=Exception('column "missing_column" does not exist'))
+    cursor.execute = AsyncMock(side_effect=[Exception('column "missing_column" does not exist'), None, None])
+    cursor.description = None
+    cursor.nextset.return_value = False
     cursor_cm = MagicMock()
     cursor_cm.__aenter__ = AsyncMock(return_value=cursor)
     cursor_cm.__aexit__ = AsyncMock(return_value=False)
@@ -394,3 +384,6 @@ async def test_sql_syntax_error_does_not_invalidate_pool():
 
     assert db_pool._is_valid is True
     assert db_pool._last_error is None
+
+    # Same driver and pool remain usable after the SQL error
+    assert await driver.execute_query("SELECT 1") is None
