@@ -195,6 +195,7 @@ async def check_hypopg_installation_status(sql_driver: SqlDriver, message_type: 
         A formatted message about the HypoPG extension status with installation instructions
     """
     status = await check_extension(sql_driver, "hypopg", include_messages=False)
+    database = "unknown"
     if not status.is_installed:
         rows = await sql_driver.execute_query("SELECT current_database() AS current_database")
         database = rows[0].cells["current_database"] if rows else "unknown"

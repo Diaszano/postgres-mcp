@@ -726,4 +726,8 @@ async def test_extension_probe_is_not_shared_across_databases():
     second = await check_hypopg_installation_status(b)
     third = await check_hypopg_installation_status(a)
     assert first[0] is True and second[0] is False and third[0] is True
-    assert any("pg_extension" in c.args[0] for c in b.execute_query.await_args_list) or b.execute_query.await_count
+    def probes(driver):
+        return [c for c in driver.execute_query.await_args_list if "pg_extension" in c.args[0]]
+
+    assert len(probes(a)) == 2  # one probe per call on db_a, none borrowed from db_b
+    assert len(probes(b)) == 1  # db_b probed its own pg_extension, not reusing db_a's result
