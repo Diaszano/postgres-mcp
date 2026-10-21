@@ -264,3 +264,35 @@ def test_default_excluded_by_config_fails_immediately():
     with pytest.raises(DatabaseConfigurationError):
         DatabaseCatalog(make_config(allowed_databases=("other",)), discover=discover, clock=FakeClock())
     discover.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_hung_discovery_times_out_as_unavailable(monkeypatch):
+    monkeypatch.setattr(database_catalog, "_DISCOVERY_TIMEOUT_SECONDS", 0.05)
+
+    async def hang(_uri):
+        await asyncio.sleep(10)
+        return {"App_Test"}
+
+    catalog = DatabaseCatalog(make_config(), discover=hang)
+    with pytest.raises(DiscoveryUnavailableError):
+        await catalog.names()
+
+
+@pytest.mark.asyncio
+async def test_hung_discovery_serves_stale_snapshot(monkeypatch):
+    monkeypatch.setattr(database_catalog, "_DISCOVERY_TIMEOUT_SECONDS", 0.05)
+    now = [0.0]
+    calls = [0]
+
+    async def discover(_uri):
+        calls[0] += 1
+        if calls[0] == 1:
+            return {"App_Test", "other"}
+        await asyncio.sleep(10)
+        return set()
+
+    catalog = DatabaseCatalog(make_config(discovery_ttl_seconds=60), discover=discover, clock=lambda: now[0])
+    assert await catalog.names() == (["App_Test", "other"], False)
+    now[0] = 61.0  # past TTL, within stale grace
+    assert await catalog.names() == (["App_Test", "other"], True)

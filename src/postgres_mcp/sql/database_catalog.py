@@ -27,6 +27,7 @@ async def discover_postgres_databases(bootstrap_uri: str) -> set[str]:
 
 
 _MAX_STALE_GRACE_SECONDS = 300
+_DISCOVERY_TIMEOUT_SECONDS = 10
 
 
 class DiscoveryUnavailableError(Exception):
@@ -66,7 +67,8 @@ class DatabaseCatalog:
 
     async def _fetch(self) -> None:
         try:
-            found = await self._discover(self._config.bootstrap_uri)
+            async with asyncio.timeout(_DISCOVERY_TIMEOUT_SECONDS):
+                found = await self._discover(self._config.bootstrap_uri)
         except Exception:
             # Fixed message: driver errors can embed the URI or password.
             raise DiscoveryUnavailableError("Database discovery is unavailable") from None
