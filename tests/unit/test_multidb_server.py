@@ -726,6 +726,7 @@ async def test_extension_probe_is_not_shared_across_databases():
     second = await check_hypopg_installation_status(b)
     third = await check_hypopg_installation_status(a)
     assert first[0] is True and second[0] is False and third[0] is True
+
     def probes(driver):
         return [c for c in driver.execute_query.await_args_list if "pg_extension" in c.args[0]]
 
