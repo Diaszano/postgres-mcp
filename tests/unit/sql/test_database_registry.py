@@ -478,3 +478,37 @@ async def test_start_validates_default_and_degrades_on_outage():
     with pytest.raises(DatabaseConfigurationError):
         await h.registry.start()
     assert not h.calls
+
+
+@pytest.mark.asyncio
+async def test_cancelled_close_all_lets_pool_close_finish():
+    h = Harness()
+    h.gates["app_testing"] = asyncio.Event()
+    h.close_gates["app_testing"] = asyncio.Event()
+    opener = asyncio.create_task(use(h, "app_testing"))
+    await settle()
+    opener.cancel()  # failed open: its close task is in flight, entry already deregistered
+    await settle()
+    closing = asyncio.create_task(h.registry.close_all())
+    await settle()
+    closing.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await closing
+    h.close_gates["app_testing"].set()
+    with pytest.raises(asyncio.CancelledError):
+        await opener
+    assert h.pool("app_testing").closed
+
+
+@pytest.mark.asyncio
+async def test_database_readded_by_forced_refresh_keeps_its_pool():
+    h = Harness()
+    async with h.registry.acquire("app_development") as dev:
+        h.discovered = (NAMES - {"app_development"}) | {"app_new"}
+        await use(h, "app_new")  # forced refresh drops app_development: revoked while leased
+        h.discovered = NAMES | {"app_other"}
+        await use(h, "app_other")  # forced refresh re-adds app_development
+    await settle()
+    assert not dev.closed  # type: ignore[attr-defined]
+    async with h.registry.acquire("app_development") as again:
+        assert again is dev

@@ -117,8 +117,9 @@ class DatabaseRegistry:
         requested = database if database is not None else self._config.default_database
         if requested is None:
             raise ValueError("No default database is configured")
-        names, _ = await self._catalog.names()
         name = await self._catalog.authorize(requested)
+        # Read after authorize, so a forced refresh inside it is reflected (cache hit).
+        names, _ = await self._catalog.names()
         self._sweep(names, keep=name)
         entry = await self._lease(name)
         try:
@@ -139,11 +140,12 @@ class DatabaseRegistry:
                     await next(iter(self._entries.values())).closed.wait()
         except TimeoutError:
             # Leases still active after the grace period: their calls fail on a closed pool.
-            logger.warning("Closing %d database pool(s) with active leases", len(self._entries))
+            logger.warning("Closing database pools with active leases: %s", ", ".join(sorted(self._entries)))
             for entry in list(self._entries.values()):
                 if entry.state == "open":
                     self._retire(entry)
-        await asyncio.gather(*self._closers)
+        # Shielded: cancelling close_all must not cancel the pool closes themselves.
+        await asyncio.shield(asyncio.gather(*self._closers))
 
     def _ensure_running(self) -> None:
         if self._shut_down:
