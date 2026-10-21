@@ -1,4 +1,5 @@
 # ruff: noqa: B017
+import asyncio
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -270,3 +271,47 @@ async def test_connection_failure_can_recover_for_same_pool(open_pool):
 
         assert await db_pool.pool_connect() is open_pool
         assert db_pool.is_valid is True
+
+
+@pytest.mark.asyncio
+async def test_concurrent_pool_connect_opens_one_pool():
+    constructed = []
+
+    class FakeCursorCtx:
+        async def __aenter__(self):
+            cursor = AsyncMock()
+            return cursor
+
+        async def __aexit__(self, *exc):
+            return False
+
+    class FakeConn:
+        def cursor(self):
+            return FakeCursorCtx()
+
+    class FakeConnCtx:
+        async def __aenter__(self):
+            return FakeConn()
+
+        async def __aexit__(self, *exc):
+            return False
+
+    class FakePool:
+        def __init__(self, *args, **kwargs):
+            constructed.append(self)
+
+        async def open(self):
+            await asyncio.sleep(0.01)
+
+        def connection(self):
+            return FakeConnCtx()
+
+        async def close(self):
+            pass
+
+    with patch("postgres_mcp.sql.sql_driver.AsyncConnectionPool", FakePool):
+        pool = DbConnPool("postgresql://u:p@localhost/db")
+        results = await asyncio.gather(*[pool.pool_connect() for _ in range(20)], return_exceptions=True)
+
+    assert len(constructed) == 1
+    assert not any(isinstance(r, Exception) for r in results)
