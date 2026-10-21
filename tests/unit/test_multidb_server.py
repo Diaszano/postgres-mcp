@@ -731,3 +731,96 @@ async def test_extension_probe_is_not_shared_across_databases():
 
     assert len(probes(a)) == 2  # one probe per call on db_a, none borrowed from db_b
     assert len(probes(b)) == 1  # db_b probed its own pg_extension, not reusing db_a's result
+
+
+LEGACY_TOOLS = {
+    "list_schemas",
+    "list_objects",
+    "get_object_details",
+    "explain_query",
+    "execute_sql",
+    "analyze_workload_indexes",
+    "analyze_query_indexes",
+    "analyze_db_health",
+    "get_top_queries",
+}
+
+# Defaults the nine legacy tools had before the optional `database` argument existed.
+LEGACY_DEFAULTS = {
+    "list_objects": {"object_type": "table"},
+    "get_object_details": {"object_type": "table"},
+    "explain_query": {"analyze": False, "hypothetical_indexes": []},
+    "execute_sql": {"sql": "all"},
+    "analyze_workload_indexes": {"max_index_size_mb": 10000, "method": "dta"},
+    "analyze_query_indexes": {"max_index_size_mb": 10000, "method": "dta"},
+    "analyze_db_health": {"health_type": "all"},
+    "get_top_queries": {"sort_by": "resources", "limit": 10},
+}
+
+
+async def _tools_after_startup(monkeypatch, argv, env):
+    # execute_sql is registered by main() per access mode: start from a clean slate, restore afterwards.
+    monkeypatch.delitem(server.mcp._tool_manager._tools, "execute_sql", raising=False)
+    await _run_main(monkeypatch, argv, env)
+    return {t.name: t for t in server.mcp._tool_manager.list_tools()}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("argv,env", [([], URI), ([], DISCOVER)], ids=["legacy", "discovery"])
+async def test_contract_nine_legacy_tools_plus_list_databases(monkeypatch, argv, env):
+    tools = await _tools_after_startup(monkeypatch, argv, env)
+    assert set(tools) == LEGACY_TOOLS | {"list_databases"}
+    assert len(tools) == 10
+
+
+@pytest.mark.asyncio
+async def test_contract_database_is_optional_on_all_nine_tools(monkeypatch):
+    tools = await _tools_after_startup(monkeypatch, [], DISCOVER)
+    for name in LEGACY_TOOLS:
+        schema = tools[name].parameters
+        assert "database" in schema["properties"], name
+        assert "database" not in schema.get("required", []), name
+        assert schema["properties"]["database"].get("default") is None, name
+    assert "database" not in tools["list_databases"].parameters["properties"]
+    assert tools["list_databases"].parameters["properties"]["refresh"]["default"] is False
+    assert "refresh" not in tools["list_databases"].parameters.get("required", [])
+
+
+@pytest.mark.asyncio
+async def test_contract_legacy_defaults_and_required_arguments_unchanged(monkeypatch):
+    tools = await _tools_after_startup(monkeypatch, [], DISCOVER)
+    for name, defaults in LEGACY_DEFAULTS.items():
+        props = tools[name].parameters["properties"]
+        for arg, expected in defaults.items():
+            assert props[arg]["default"] == expected, f"{name}.{arg}"
+    required = {name: set(tools[name].parameters.get("required", [])) for name in LEGACY_TOOLS}
+    assert required["list_objects"] == {"schema_name"}
+    assert required["get_object_details"] == {"schema_name", "object_name"}
+    assert required["explain_query"] == {"sql"}
+    assert required["analyze_query_indexes"] == {"queries"}
+    for name in ("list_schemas", "execute_sql", "analyze_workload_indexes", "analyze_db_health", "get_top_queries"):
+        assert required[name] == set(), name
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "argv,env,title,read_only,destructive",
+    [
+        ([], URI, "Execute SQL", None, True),
+        (["--access-mode=unrestricted"], DISCOVER, "Execute SQL", None, True),
+        ([], DISCOVER, "Execute SQL (Read-Only)", True, None),
+        (["--access-mode=restricted"], URI, "Execute SQL (Read-Only)", True, None),
+    ],
+    ids=["legacy-default", "discovery-unrestricted", "discovery-default-restricted", "legacy-restricted"],
+)
+async def test_contract_execute_sql_annotations_follow_access_mode(monkeypatch, argv, env, title, read_only, destructive):
+    tools = await _tools_after_startup(monkeypatch, argv, env)
+    ann = tools["execute_sql"].annotations
+    assert (ann.title, ann.readOnlyHint, ann.destructiveHint) == (title, read_only, destructive)
+
+
+@pytest.mark.asyncio
+async def test_contract_every_other_tool_is_read_only(monkeypatch):
+    tools = await _tools_after_startup(monkeypatch, [], DISCOVER)
+    for name in (LEGACY_TOOLS - {"execute_sql"}) | {"list_databases"}:
+        assert tools[name].annotations.readOnlyHint is True, name

@@ -276,6 +276,106 @@ For Windsurf, the format in `mcp_config.json` is slightly different:
 }
 ```
 
+## Multiple Databases (Optional)
+
+By default Postgres MCP Pro talks to the single database named in `DATABASE_URI`, exactly as before.
+Set `DATABASE_AUTO_DISCOVER=true` to let the agent discover and choose among the databases of the same PostgreSQL instance.
+Every tool accepts an optional `database` argument; when it is omitted the default database is used, never the one used by a previous call.
+
+### Legacy mode (default)
+
+```bash
+DATABASE_URI='postgresql://user:password@localhost:5432/app_development' uvx postgres-mcp
+```
+
+- One connection pool, to the database in the URI (a URI passed as a command-line argument still works).
+- Default access mode stays `unrestricted`.
+- `database` is accepted only when it equals the URI database; any other name is rejected with an error (no discovery, no fallback).
+- `list_databases` returns only that database. If the URI has no database name, `name` is `null`.
+- `DATABASE_ALLOWED_DATABASES`, `DATABASE_EXCLUDED_DATABASES` and the other variables below have no effect.
+
+### Discovery mode
+
+```bash
+DATABASE_URI='postgresql://dev:password@localhost:5432/postgres'
+DATABASE_AUTO_DISCOVER=true
+DATABASE_DEFAULT_DATABASE=app_development
+DATABASE_ALLOWED_DATABASES=app_development,app_testing,analytics
+DATABASE_EXCLUDED_DATABASES=postgres
+
+uvx postgres-mcp
+```
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `DATABASE_URI` | required | Bootstrap URI. It is used to query `pg_database`, and its host, port, user, password, TLS and other options are reused for every database; only `dbname` changes. |
+| `DATABASE_AUTO_DISCOVER` | `false` | `true`/`false`, `1`/`0` or `yes`/`no`. Enables discovery and the `database` argument. |
+| `DATABASE_DEFAULT_DATABASE` | `dbname` of `DATABASE_URI` | Database used when `database` is omitted. Required if the URI has no `dbname`. |
+| `DATABASE_ALLOWED_DATABASES` | empty (all eligible) | Allowlist of exact, case-sensitive names. |
+| `DATABASE_EXCLUDED_DATABASES` | empty | Denylist of exact names. It wins over the allowlist. |
+| `DATABASE_DISCOVERY_TTL_SECONDS` | `60` | How long the discovered list is cached. |
+| `DATABASE_MAX_POOLS` | `8` | Maximum number of database pools open at the same time. |
+| `DATABASE_POOL_MAX_SIZE` | `5` | Maximum connections per database pool. |
+| `DATABASE_POOL_IDLE_SECONDS` | `600` | Idle time after which an unused pool may be closed. |
+
+Both list variables accept a comma-separated list (`app,testing`, spaces around names are trimmed) or, when the value starts with `[`, a JSON array of strings (`["app", "name,with,comma"]`).
+Use the JSON form for names that contain commas. Names are never lower-cased or otherwise normalized.
+Numeric variables must be integers of at least 1; invalid values stop the server at startup with an error that never includes the URI or password.
+
+**What is discoverable.** A database is listed only if it is not a template, accepts connections, the role has `CONNECT` on it, and it passes the allow and deny lists.
+The database in `DATABASE_URI` is only the bootstrap connection: it is not special.
+It is usable by the tools only if it is also eligible, so the URI may point at `postgres` while `postgres` is excluded.
+The default database must itself be eligible: if the filters exclude it, or it does not exist or is not connectable, the server fails with a configuration error instead of silently picking another database.
+
+**Access mode.** With `DATABASE_AUTO_DISCOVER=true` and no `--access-mode`, the server runs in `restricted` mode.
+Writes are enabled only by an explicit `--access-mode=unrestricted`, which logs a warning at startup and is still limited by the real privileges of the PostgreSQL role.
+Without discovery the default remains `unrestricted`.
+The mode is global to the server process, not per database.
+`restricted` is an extra layer, not a substitute for a least-privilege PostgreSQL role.
+
+**Lazy pools, limits and idle cleanup.**
+- No pool is opened at startup and `list_databases` never opens one; a pool is created on the first tool call that targets a database (`min_size=0`, up to `DATABASE_POOL_MAX_SIZE` connections).
+- At most `DATABASE_MAX_POOLS` pools are open. Reaching the limit closes the least recently used pool that has no call in progress. If every pool is in use, the call fails with an explicit capacity error and nothing is closed.
+- A pool is held for the whole duration of a tool call, so it is never closed under a running call.
+- Idle pools older than `DATABASE_POOL_IDLE_SECONDS` are closed opportunistically on later calls and catalog refreshes; there is no background timer.
+- Databases that disappear from the catalog stop accepting new calls and their pool is closed when running calls finish.
+- A connection failure on one database is reported for that database only; other databases and the pool of the failing one keep working after the problem is fixed. Ordinary SQL errors do not invalidate a pool.
+
+**Refresh.** The list is cached for `DATABASE_DISCOVERY_TTL_SECONDS`. A database created later is picked up by `list_databases` with `refresh=true`, or by the first call after the TTL expires, without restarting the server.
+Asking for an unknown name forces a single refresh before the call is rejected.
+If a refresh fails, the previous list is served for a short grace period (at most 300 seconds), without admitting new names, and `list_databases` reports `catalog_stale: true`.
+If there is no valid list yet, the call fails with a "discovery is unavailable" error.
+If the bootstrap database is unreachable at startup the server still starts, in a degraded state.
+
+**Same-instance restriction.** All databases come from the instance addressed by `DATABASE_URI`. The `database` argument takes only a database name, never a DSN, host or schema, so there is no way to reach another server, and a name is never spliced into SQL. Nothing connects to a database that was not discovered and authorized.
+Databases are separate connections: there is no cross-database SQL.
+
+**Instance-wide metrics.**
+- `get_top_queries` and the index tuning tools read `pg_stat_statements` only for the selected database (filtered by `dbid`). The extension must be installed in each database you query; a missing extension is reported for that database.
+- `analyze_db_health`: the `connection` and `replication` checks describe the whole instance and are labelled `[instance-wide]` in the output; the other checks run against the selected database.
+
+### Choosing a database
+
+`list_databases` takes an optional `refresh` argument and returns JSON like:
+
+```json
+[
+  {"name": "analytics", "is_default": false, "connection_state": "not_connected", "catalog_stale": false},
+  {"name": "app_development", "is_default": true, "connection_state": "connected", "catalog_stale": false}
+]
+```
+
+`connection_state` is `connected` (pool open), `not_connected` (no pool yet) or `unavailable` (the last attempt to open a pool failed).
+Example prompts:
+
+> Which databases can you see? Refresh the list first.
+
+> List the tables of the `public` schema in `app_testing`, then compare them with `analytics`.
+
+> Run `SELECT current_database()` on `analytics`.
+
+The same call, as tool arguments: `{"sql": "SELECT current_database()", "database": "analytics"}`.
+
 ## Postgres Extension Installation (Optional)
 
 To enable index tuning and comprehensive performance analysis you need to load the `pg_stat_statements` and `hypopg` extensions on your database.
@@ -336,10 +436,11 @@ We chose this approach because the [MCP client ecosystem](https://modelcontextpr
 This contrasts with the approach of other Postgres MCP servers, including the [Reference Postgres MCP Server](https://github.com/modelcontextprotocol/servers-archived/tree/main/src/postgres), which use [MCP resources](https://modelcontextprotocol.io/docs/concepts/resources) to expose schema information.
 
 
-Postgres MCP Pro Tools:
+Postgres MCP Pro Tools (all except `list_databases` accept an optional `database` argument, see [Multiple Databases](#multiple-databases-optional)):
 
 | Tool Name | Description |
 |-----------|-------------|
+| `list_databases` | Lists the databases the server can use, the default, connection state and whether the list is stale (`refresh` forces a new query). Never opens connections. |
 | `list_schemas` | Lists all database schemas available in the PostgreSQL instance. |
 | `list_objects` | Lists database objects (tables, views, sequences, extensions) within a specified schema. |
 | `get_object_details` | Provides information about a specific database object, for example, a table's columns, constraints, and indexes. |

@@ -7,19 +7,19 @@ This directory contains tests for the PostgreSQL MCP package.
 To run all tests:
 
 ```bash
-uv run pytest
+uv run --frozen --group dev pytest
 ```
 
 To run a specific test file:
 
 ```bash
-uv run pytest tests/unit/test_obfuscate_password.py
+uv run --frozen --group dev pytest tests/unit/test_obfuscate_password.py
 ```
 
 To run a specific test:
 
 ```bash
-uv run pytest tests/unit/test_db_conn_pool.py::test_pool_connect_success
+uv run --frozen --group dev pytest tests/unit/test_db_conn_pool.py::test_pool_connect_success
 ```
 
 ## Test Structure
@@ -28,6 +28,8 @@ uv run pytest tests/unit/test_db_conn_pool.py::test_pool_connect_success
   - `test_obfuscate_password.py`: Tests for password obfuscation functionality
   - `test_db_conn_pool.py`: Tests for database connection pool
   - `test_sql_driver.py`: Tests for SQL driver and transaction handling
+  - `test_database_config.py`, `test_access_mode.py`, `test_transport.py`: Multi-database configuration, access mode defaults and transports
+  - `test_multidb_server.py`: Multi-database routing, `list_databases`, restricted mode, per-database extension checks and the MCP tool contract (nine tools plus `list_databases`, optional `database`, annotations, legacy defaults)
 
 ## Multi-database integration environment
 
@@ -40,3 +42,5 @@ uv run pytest tests/unit/test_db_conn_pool.py::test_pool_connect_success
 ```bash
 uv run --frozen --group dev pytest -q tests/integration/test_multi_database_integration.py
 ```
+
+The full suite (`uv run --frozen --group dev pytest -q`) therefore also needs Docker; unit tests alone (`tests/unit`) do not.

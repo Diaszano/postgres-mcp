@@ -82,7 +82,8 @@ def parse_database_config(env: Mapping[str, str], database_url: str | None, acce
     idle = _int(env, "DATABASE_POOL_IDLE_SECONDS", 600)
 
     try:
-        uri_dbname = conninfo_to_dict(uri).get("dbname")
+        raw_dbname = conninfo_to_dict(uri).get("dbname")
+        uri_dbname = str(raw_dbname) if raw_dbname is not None else None
     except ProgrammingError:
         # Fixed message: psycopg's text may echo the URI, including the password.
         raise ValueError("DATABASE_URI is not a valid PostgreSQL connection URI") from None
