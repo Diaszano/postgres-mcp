@@ -34,13 +34,13 @@ async def test_get_sql_driver_returns_correct_driver(access_mode, expected_drive
         patch("postgres_mcp.server.current_access_mode", access_mode),
         patch("postgres_mcp.server.db_connection", mock_db_connection),
     ):
-        driver = await get_sql_driver()
-        assert isinstance(driver, expected_driver_type)
+        async with get_sql_driver() as driver:
+            assert isinstance(driver, expected_driver_type)
 
-        # When in RESTRICTED mode, verify timeout is set
-        if access_mode == AccessMode.RESTRICTED:
-            assert isinstance(driver, SafeSqlDriver)
-            assert driver.timeout == 30
+            # When in RESTRICTED mode, verify timeout is set
+            if access_mode == AccessMode.RESTRICTED:
+                assert isinstance(driver, SafeSqlDriver)
+                assert driver.timeout == 30
 
 
 @pytest.mark.asyncio
@@ -50,10 +50,10 @@ async def test_get_sql_driver_sets_timeout_in_restricted_mode(mock_db_connection
         patch("postgres_mcp.server.current_access_mode", AccessMode.RESTRICTED),
         patch("postgres_mcp.server.db_connection", mock_db_connection),
     ):
-        driver = await get_sql_driver()
-        assert isinstance(driver, SafeSqlDriver)
-        assert driver.timeout == 30
-        assert hasattr(driver, "sql_driver")
+        async with get_sql_driver() as driver:
+            assert isinstance(driver, SafeSqlDriver)
+            assert driver.timeout == 30
+            assert hasattr(driver, "sql_driver")
 
 
 @pytest.mark.asyncio
@@ -63,9 +63,9 @@ async def test_get_sql_driver_in_unrestricted_mode_no_timeout(mock_db_connection
         patch("postgres_mcp.server.current_access_mode", AccessMode.UNRESTRICTED),
         patch("postgres_mcp.server.db_connection", mock_db_connection),
     ):
-        driver = await get_sql_driver()
-        assert isinstance(driver, SqlDriver)
-        assert not hasattr(driver, "timeout")
+        async with get_sql_driver() as driver:
+            assert isinstance(driver, SqlDriver)
+            assert not hasattr(driver, "timeout")
 
 
 @pytest.mark.asyncio
