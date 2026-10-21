@@ -1,13 +1,16 @@
 # ruff: noqa: B008
 import argparse
 import asyncio
+import json
 import logging
 import os
 import signal
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import asdict
 from enum import Enum
+from typing import Annotated
 from typing import Any
 from typing import List
 from typing import Literal
@@ -25,6 +28,7 @@ from postgres_mcp.index.dta_calc import DatabaseTuningAdvisor
 from .artifacts import ErrorResult
 from .artifacts import ExplainPlanArtifact
 from .database_config import DatabaseConfig
+from .database_config import parse_database_config
 from .database_health import DatabaseHealthTool
 from .database_health import HealthType
 from .explain import ExplainPlanTool
@@ -36,6 +40,7 @@ from .sql import SafeSqlDriver
 from .sql import SqlDriver
 from .sql import check_hypopg_installation_status
 from .sql import obfuscate_password
+from .sql.database_catalog import DatabaseCatalog
 from .sql.database_registry import DatabaseRegistry
 from .top_queries import TopQueriesCalc
 
@@ -112,6 +117,31 @@ def format_text_response(text: Any) -> ResponseType:
 def format_error_response(error: str) -> ResponseType:
     """Format an error response."""
     return format_text_response(f"Error: {error}")
+
+
+@mcp.tool(
+    description="List the databases this server can use, with the default, connection state and whether the catalog is stale. "
+    "Never opens connections. Pass refresh=true to re-query the catalog.",
+    annotations=ToolAnnotations(
+        title="List Databases",
+        readOnlyHint=True,
+    ),
+)
+async def list_databases(refresh: Annotated[bool, Field(description="Force a new catalog query")] = False) -> ResponseType:
+    """List available databases without opening any pool."""
+    try:
+        if database_config is not None and database_config.auto_discover:
+            if registry is None:
+                raise RuntimeError("Database registry is not initialized")
+            rows = [asdict(info) for info in await registry.list_databases(refresh=refresh)]
+        else:
+            # Legacy: only the DATABASE_URI database; name is None when the URI has no dbname (none is invented).
+            state = "connected" if db_connection.is_valid else "unavailable"
+            rows = [{"name": _bootstrap_database(), "is_default": True, "connection_state": state, "catalog_stale": False}]
+        return format_text_response(json.dumps(rows))
+    except Exception as e:
+        logger.error(f"Error listing databases: {e}")
+        return format_error_response(str(e))
 
 
 @mcp.tool(
@@ -597,8 +627,9 @@ async def main():
         "--access-mode",
         type=str,
         choices=[mode.value for mode in AccessMode],
-        default=AccessMode.UNRESTRICTED.value,
-        help="Set SQL access mode: unrestricted (unrestricted) or restricted (read-only with protections)",
+        default=None,  # None = omitted: restricted with DATABASE_AUTO_DISCOVER=true, else unrestricted
+        help="Set SQL access mode: unrestricted or restricted (read-only with protections). "
+        "Default: unrestricted, or restricted when DATABASE_AUTO_DISCOVER=true",
     )
     parser.add_argument(
         "--transport",
@@ -634,9 +665,15 @@ async def main():
 
     args = parser.parse_args()
 
-    # Store the access mode in the global variable
-    global current_access_mode
-    current_access_mode = AccessMode(args.access_mode)
+    global current_access_mode, database_config, registry
+    # Configuration errors (including a default database denied by the filters) propagate: never masked.
+    database_config = parse_database_config(os.environ, args.database_url, args.access_mode)
+    current_access_mode = AccessMode(database_config.access_mode)
+    if database_config.auto_discover and args.access_mode == AccessMode.UNRESTRICTED.value:
+        logger.warning(
+            "Multi-database discovery is enabled with --access-mode=unrestricted: tools can write to every "
+            "authorized database. Prefer restricted mode and least-privilege PostgreSQL roles."
+        )
 
     # Add the query tool with a description and annotations appropriate to the access mode
     if current_access_mode == AccessMode.UNRESTRICTED:
@@ -660,25 +697,21 @@ async def main():
 
     logger.info(f"Starting PostgreSQL MCP Server in {current_access_mode.upper()} mode")
 
-    # Get database URL from environment variable or command line
-    database_url = os.environ.get("DATABASE_URI", args.database_url)
-
-    if not database_url:
-        raise ValueError(
-            "Error: No database URL provided. Please specify via 'DATABASE_URI' environment variable or command-line argument.",
-        )
-
-    # Initialize database connection pool
-    try:
-        await db_connection.pool_connect(database_url)
-        logger.info("Successfully connected to database and initialized connection pool")
-    except Exception as e:
-        logger.warning(
-            f"Could not connect to database: {obfuscate_password(str(e))}",
-        )
-        logger.warning(
-            "The MCP server will start but database operations will fail until a valid connection is established.",
-        )
+    if database_config.auto_discover:
+        registry = DatabaseRegistry(database_config, DatabaseCatalog(database_config))
+        await registry.start()  # transient discovery outage starts degraded; config errors raise
+    else:
+        # Legacy: single pool, tolerant of an unavailable database
+        try:
+            await db_connection.pool_connect(database_config.bootstrap_uri)
+            logger.info("Successfully connected to database and initialized connection pool")
+        except Exception as e:
+            logger.warning(
+                f"Could not connect to database: {obfuscate_password(str(e))}",
+            )
+            logger.warning(
+                "The MCP server will start but database operations will fail until a valid connection is established.",
+            )
 
     # Set up proper shutdown handling
     try:
@@ -692,16 +725,20 @@ async def main():
         pass
 
     # Run the server with the selected transport (always async)
-    if args.transport == "stdio":
-        await mcp.run_stdio_async()
-    elif args.transport == "sse":
-        mcp.settings.host = args.sse_host
-        mcp.settings.port = args.sse_port
-        await mcp.run_sse_async()
-    elif args.transport == "streamable-http":
-        mcp.settings.host = args.streamable_http_host
-        mcp.settings.port = args.streamable_http_port
-        await mcp.run_streamable_http_async()
+    try:
+        if args.transport == "stdio":
+            await mcp.run_stdio_async()
+        elif args.transport == "sse":
+            mcp.settings.host = args.sse_host
+            mcp.settings.port = args.sse_port
+            await mcp.run_sse_async()
+        elif args.transport == "streamable-http":
+            mcp.settings.host = args.streamable_http_host
+            mcp.settings.port = args.streamable_http_port
+            await mcp.run_streamable_http_async()
+    finally:
+        if registry is not None:
+            await registry.close_all()  # idempotent
 
 
 async def shutdown(sig=None):
@@ -720,6 +757,8 @@ async def shutdown(sig=None):
 
     # Close database connections
     try:
+        if registry is not None:
+            await registry.close_all()
         await db_connection.close()
         logger.info("Closed database connections")
     except Exception as e:

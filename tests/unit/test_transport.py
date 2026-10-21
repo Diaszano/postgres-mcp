@@ -127,3 +127,34 @@ async def test_default_transport_is_stdio():
             mock_http.assert_not_called()
     finally:
         sys.argv = original_argv
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "transport,runner",
+    [("stdio", "run_stdio_async"), ("sse", "run_sse_async"), ("streamable-http", "run_streamable_http_async")],
+)
+@pytest.mark.parametrize("fails", [False, True])
+async def test_transport_finally_closes_registry(monkeypatch, transport, runner, fails):
+    """Discovery mode closes the registry after every transport, even when it raises."""
+    from postgres_mcp import server
+
+    monkeypatch.setattr(sys, "argv", ["postgres_mcp", f"--transport={transport}"])
+    monkeypatch.setenv("DATABASE_URI", "postgresql://user:password@localhost/db")
+    monkeypatch.setenv("DATABASE_AUTO_DISCOVER", "true")
+    monkeypatch.setattr(server, "registry", None)
+    monkeypatch.setattr(server, "database_config", None)
+    monkeypatch.setattr(server, "current_access_mode", server.current_access_mode)
+
+    run = AsyncMock(side_effect=RuntimeError("transport down") if fails else None)
+    with (
+        patch.object(server.mcp, runner, run),
+        patch("postgres_mcp.server.DatabaseRegistry.start", AsyncMock()),
+        patch("postgres_mcp.server.DatabaseRegistry.close_all", AsyncMock()) as close_all,
+    ):
+        if fails:
+            with pytest.raises(RuntimeError, match="transport down"):
+                await server.main()
+        else:
+            await server.main()
+        close_all.assert_awaited_once()
