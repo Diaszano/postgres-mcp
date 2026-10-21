@@ -471,3 +471,74 @@ async def test_startup_degraded_does_not_list_falsely(monkeypatch):
         assert server.registry is not None
         text = (await server.list_databases())[0].text
     assert text == "Error: Database discovery is unavailable"
+
+
+# --- Task 12: execute_sql and explain_query routed to the selected database ---
+
+from postgres_mcp.server import execute_sql  # noqa: E402
+from postgres_mcp.server import explain_query  # noqa: E402
+
+_PLAN = {"Plan": {"Node Type": "Result", "Startup Cost": 0.0, "Total Cost": 0.01, "Plan Rows": 1, "Plan Width": 4}}
+
+
+def _routing_execute(registry: FakeRegistry, calls: list[tuple[str, str]]):
+    """Fake _execute_with_connection: records (pool name, query) and tags rows with the pool name."""
+
+    async def fake(connection, query, params, force_readonly):
+        name = next(n for n, pool in registry.pools.items() if pool is connection)
+        calls.append((name, query))
+        return [SqlDriver.RowResult(cells={"db": f"cat_{name}", "extversion": "1.4", "QUERY PLAN": [_PLAN]})]
+
+    return AsyncMock(side_effect=fake)
+
+
+@pytest.mark.asyncio
+async def test_execute_sql_routes_by_database(discovery):
+    calls: list[tuple[str, str]] = []
+    with patch.object(SqlDriver, "_execute_with_connection", _routing_execute(discovery, calls)):
+        selected = (await execute_sql(sql="SELECT current_database() AS db", database="app_testing"))[0].text
+        default = (await execute_sql(sql="SELECT current_database() AS db"))[0].text
+    assert "cat_app_testing" in selected and "cat_app_main" not in selected
+    assert "cat_app_main" in default and "cat_app_testing" not in default
+    assert [name for name, _ in calls] == ["app_testing", "app_main"]
+    assert discovery.requested == ["app_testing", None]
+    assert discovery.leases == {"app_testing": 0, "app_main": 0}
+
+
+_EXPLAIN_CALLS = [
+    # Direct calls bypass FastMCP, so Field() defaults must be passed explicitly.
+    ("explain", lambda db: explain_query("SELECT 1", False, [], database=db)),
+    ("analyze", lambda db: explain_query("SELECT 1", True, [], database=db)),
+    ("hypothetical", lambda db: explain_query("SELECT 1", False, [{"table": "t", "columns": ["a"]}], database=db)),
+]
+
+
+@pytest.mark.parametrize("call", [c for _, c in _EXPLAIN_CALLS], ids=[n for n, _ in _EXPLAIN_CALLS])
+@pytest.mark.asyncio
+async def test_explain_query_routes_by_database(discovery, call):
+    calls: list[tuple[str, str]] = []
+    with patch.object(SqlDriver, "_execute_with_connection", _routing_execute(discovery, calls)):
+        selected = (await call("app_testing"))[0].text
+        selected_calls = list(calls)
+        calls.clear()
+        default = (await call(None))[0].text
+    assert not selected.startswith("Error") and not default.startswith("Error")
+    # Every query of the call (hypopg check, hypopg_reset, EXPLAIN) runs on the requested pool only.
+    assert selected_calls and {name for name, _ in selected_calls} == {"app_testing"}
+    assert calls and {name for name, _ in calls} == {"app_main"}
+    assert any("EXPLAIN" in query for _, query in selected_calls)
+    assert discovery.requested == ["app_testing", None]
+    assert discovery.leases == {"app_testing": 0, "app_main": 0}
+
+
+def test_execute_sql_and_explain_signatures_keep_legacy_defaults():
+    import inspect
+
+    execute_params = inspect.signature(execute_sql).parameters
+    assert list(execute_params) == ["sql", "database"]
+    assert execute_params["sql"].default.default == "all"
+    explain_params = inspect.signature(explain_query).parameters
+    assert list(explain_params) == ["sql", "analyze", "hypothetical_indexes", "database"]
+    assert explain_params["analyze"].default.default is False
+    assert explain_params["hypothetical_indexes"].default.default == []
+    assert explain_params["database"].default is None

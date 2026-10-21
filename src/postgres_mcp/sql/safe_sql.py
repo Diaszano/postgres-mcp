@@ -219,6 +219,7 @@ class SafeSqlDriver(SqlDriver):
         "string_to_array",
         "trim_array",
         "unnest",
+        "generate_series",
         "any",
         # String functions
         "ascii",
@@ -929,24 +930,22 @@ class SafeSqlDriver(SqlDriver):
                 # Skip attributes that don't exist (this is normal in pglast)
                 continue
 
-            # Handle lists of nodes
-            if isinstance(attr, list):
-                for item in attr:
-                    if isinstance(item, Node):
-                        self._validate_node(item)
+            self._validate_children(attr)
 
-            # Handle tuples of nodes
-            elif isinstance(attr, tuple):
-                for item in attr:
-                    if isinstance(item, Node):
-                        self._validate_node(item)
+    def _validate_children(self, attr: Any) -> None:
+        """Validate every node in attr, descending into nested lists and tuples.
 
-            # Handle single nodes
-            elif isinstance(attr, Node):
-                self._validate_node(attr)
+        RangeFunction.functions is a tuple of (FuncCall, coldeflist) tuples: without nested
+        descent, functions called in FROM / LATERAL / ROWS FROM would skip the allowlist.
+        """
+        if isinstance(attr, Node):
+            self._validate_node(attr)
+        elif isinstance(attr, (list, tuple)):
+            for item in attr:
+                self._validate_children(item)
 
-    def _validate(self, query: str) -> None:
-        """Validate query is safe to execute"""
+    def validate(self, query: str) -> None:
+        """Validate query is safe to execute; raises ValueError otherwise. Same checks as execute_query."""
         try:
             # Parse the SQL using pglast
             parsed = pglast.parse_sql(query)
@@ -984,7 +983,7 @@ class SafeSqlDriver(SqlDriver):
         force_readonly: bool = True,  # do not use value passed in
     ) -> Optional[list[SqlDriver.RowResult]]:  # noqa: UP007
         """Execute a query after validating it is safe"""
-        self._validate(query)
+        self.validate(query)
 
         # NOTE: Always force readonly=True in SafeSqlDriver regardless of what was passed
         if self.timeout:

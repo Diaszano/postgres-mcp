@@ -421,6 +421,7 @@ Examples: [
 If there is no hypothetical index, you can pass an empty list.""",
         default=[],
     ),
+    database: Annotated[str | None, Field(description="Database to use; omit for the default database")] = None,
 ) -> ResponseType:
     """
     Explains the execution plan for a SQL query.
@@ -431,7 +432,10 @@ If there is no hypothetical index, you can pass an empty list.""",
         hypothetical_indexes: Optional list of indexes to simulate
     """
     try:
-        async with get_sql_driver() as sql_driver:
+        async with get_sql_driver(database) as sql_driver:
+            if isinstance(sql_driver, SafeSqlDriver):
+                # Restricted: reject the user SQL before any query (hypopg check, bind lookups, EXPLAIN [ANALYZE]).
+                sql_driver.validate(sql)
             explain_tool = ExplainPlanTool(sql_driver=sql_driver)
             result: ExplainPlanArtifact | ErrorResult | None = None
 
@@ -482,10 +486,11 @@ If there is no hypothetical index, you can pass an empty list.""",
 # Query function declaration without the decorator - we'll add it dynamically based on access mode
 async def execute_sql(
     sql: str = Field(description="SQL to run", default="all"),
+    database: Annotated[str | None, Field(description="Database to use; omit for the default database")] = None,
 ) -> ResponseType:
     """Executes a SQL query against the database."""
     try:
-        async with get_sql_driver() as sql_driver:
+        async with get_sql_driver(database) as sql_driver:
             rows = await sql_driver.execute_query(sql)  # type: ignore
             if rows is None:
                 return format_text_response("No results")

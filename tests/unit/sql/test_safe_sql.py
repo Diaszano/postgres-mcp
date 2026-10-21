@@ -758,3 +758,57 @@ async def test_query_with_whitespace(safe_driver, mock_sql_driver):
     """
     await safe_driver.execute_query(query)
     mock_sql_driver.execute_query.assert_awaited_once_with("/* crystaldba */ " + query, params=None, force_readonly=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT 1; DELETE FROM isolated_marker",
+        "SELECT 1; COMMIT; DELETE FROM isolated_marker",
+        "EXPLAIN (FORMAT JSON) SELECT 1; DELETE FROM isolated_marker",
+        "EXPLAIN (FORMAT JSON, ANALYZE) SELECT 1",
+        "EXPLAIN (FORMAT JSON, ANALYZE) SELECT * FROM pg_read_file('/etc/passwd')",
+        "SELECT hypopg_reset();EXPLAIN (FORMAT JSON) DELETE FROM isolated_marker",
+        "SELECT * FROM dblink_exec('dbname=app_main', 'DELETE FROM isolated_marker')",
+        "SELECT * FROM isolated_marker JOIN LATERAL pg_terminate_backend(isolated_marker.id) ON true",
+        "SELECT * FROM pg_terminate_backend(1)",
+        "SELECT * FROM pg_read_file('/etc/passwd')",
+        "SELECT * FROM lo_import('/etc/passwd')",
+        "SELECT * FROM ROWS FROM (generate_series(1, 3), pg_read_file('/etc/passwd'))",
+    ],
+)
+async def test_guard_rejects_multi_statement_explain_analyze_and_from_functions(safe_driver, mock_sql_driver, query):
+    """Pins the parser guards the restricted tools rely on: nothing reaches the wrapped driver."""
+    with pytest.raises(ValueError):
+        await safe_driver.execute_query(query)
+    mock_sql_driver.execute_query.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT * FROM pg_terminate_backend(1)",
+        "SELECT * FROM lo_import('/etc/passwd')",
+        "DELETE FROM isolated_marker",
+        "SELECT 1; DELETE FROM isolated_marker",
+    ],
+)
+def test_public_validate_rejects_like_execution_path(query):
+    with pytest.raises(ValueError):
+        SafeSqlDriver(Mock(spec=SqlDriver)).validate(query)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT * FROM generate_series(1,3)",
+        "SELECT * FROM generate_series(1,3) AS g(n) JOIN LATERAL unnest(ARRAY[g.n]) AS u(x) ON true",
+        "SELECT * FROM hypopg_list_indexes()",
+    ],
+)
+async def test_guard_allows_allowlisted_from_functions(safe_driver, mock_sql_driver, query):
+    safe_driver.validate(query)
+    await safe_driver.execute_query(query)
+    mock_sql_driver.execute_query.assert_awaited_once()
