@@ -8,7 +8,9 @@ from postgres_mcp.database_config import DatabaseConfig
 from postgres_mcp.sql import DatabaseInfo
 from postgres_mcp.sql import DatabaseRegistry
 from postgres_mcp.sql import DatabaseUnavailableError
+from postgres_mcp.sql import PoolCapacityError
 from postgres_mcp.sql.database_catalog import DatabaseCatalog
+from postgres_mcp.sql.database_catalog import DatabaseConfigurationError
 
 URI = "postgresql://dev:s3cret@localhost:5432/postgres"
 NAMES = {"postgres", "app_testing", "app_development", "app_bad"}
@@ -34,11 +36,13 @@ def make_config(**overrides) -> DatabaseConfig:
 class FakePool:
     """Stands in for DbConnPool; `gate` blocks pool_connect until set."""
 
-    def __init__(self, name: str, gate: asyncio.Event | None, error: Exception | None) -> None:
+    def __init__(self, name: str, gate: asyncio.Event | None, error: Exception | None, close_gate: asyncio.Event | None = None) -> None:
         self.name = name
         self.gate = gate
         self.error = error
+        self.close_gate = close_gate
         self.connects = 0
+        self.closes = 0
         self.closed = False
 
     async def pool_connect(self) -> None:
@@ -49,6 +53,9 @@ class FakePool:
             raise self.error
 
     async def close(self) -> None:
+        self.closes += 1
+        if self.close_gate is not None:
+            await self.close_gate.wait()
         self.closed = True
 
 
@@ -58,13 +65,17 @@ class Harness:
         self.pools: dict[str, list[FakePool]] = {}
         self.gates: dict[str, asyncio.Event] = {}
         self.errors: dict[str, Exception] = {}
+        self.close_gates: dict[str, asyncio.Event] = {}
+        self.discovered = set(NAMES)
+        self.now = 0.0
         config = make_config(**config_overrides)
-        catalog = DatabaseCatalog(config, discover=AsyncMock(return_value=set(NAMES)), clock=lambda: 0.0)
-        self.registry = DatabaseRegistry(config, catalog, pool_factory=self.factory, clock=lambda: 0.0)
+        self.discover = AsyncMock(side_effect=lambda _uri: set(self.discovered))
+        catalog = DatabaseCatalog(config, discover=self.discover, clock=lambda: 0.0)
+        self.registry = DatabaseRegistry(config, catalog, pool_factory=self.factory, clock=lambda: self.now)
 
     def factory(self, name: str) -> FakePool:
         self.calls[name] += 1
-        pool = FakePool(name, self.gates.get(name), self.errors.get(name))
+        pool = FakePool(name, self.gates.get(name), self.errors.get(name), self.close_gates.get(name))
         self.pools.setdefault(name, []).append(pool)
         return pool  # type: ignore[return-value]
 
@@ -260,3 +271,210 @@ async def test_list_databases_reports_state_without_opening():
         pass
     infos = {i.name: i for i in await h.registry.list_databases()}
     assert infos["app_testing"].connection_state == "connected"
+
+
+async def use(h: Harness, name: str) -> None:
+    async with h.registry.acquire(name):
+        pass
+
+
+@pytest.mark.asyncio
+async def test_max_pools_evicts_lru_idle_only():
+    h = Harness(max_pools=2)
+    h.now = 1.0
+    await use(h, "app_testing")
+    h.now = 2.0
+    await use(h, "app_development")
+    h.now = 3.0
+    await use(h, "app_testing")  # app_development is now least recently used
+    h.now = 4.0
+    await use(h, "app_bad")
+    await settle()
+    assert h.pool("app_development").closed
+    assert not h.pool("app_testing").closed and not h.pool("app_bad").closed
+
+    # A leased pool is never the victim, even when it is the least recently used.
+    h.now = 5.0
+    async with h.registry.acquire("app_bad"):  # oldest last_used is app_testing (3.0), but leased one is app_bad
+        h.now = 6.0
+        await use(h, "app_development")
+        await settle()
+        assert h.pool("app_testing").closed
+        assert not h.pool("app_bad").closed
+
+
+@pytest.mark.asyncio
+async def test_all_pools_leased_returns_capacity_error():
+    h = Harness(max_pools=2)
+    async with h.registry.acquire("app_testing"):
+        async with h.registry.acquire("app_development"):
+            with pytest.raises(PoolCapacityError):
+                async with h.registry.acquire("app_bad"):
+                    pass
+            assert h.registry.active_leases("app_testing") == 1
+            assert h.registry.active_leases("app_development") == 1
+            assert not h.pool("app_testing").closed and not h.pool("app_development").closed
+    assert "app_bad" not in h.calls
+    await use(h, "app_bad")  # capacity frees once a lease is released
+
+
+@pytest.mark.asyncio
+async def test_evicted_pool_counts_until_closed():
+    h = Harness(max_pools=1)
+    h.close_gates["app_testing"] = asyncio.Event()
+    await use(h, "app_testing")
+    task = asyncio.create_task(use(h, "app_development"))
+    await settle()
+    assert h.pool("app_testing").closes == 1
+    assert "app_development" not in h.calls  # closing pool still occupies the slot
+    h.close_gates["app_testing"].set()
+    await task
+    assert h.calls["app_development"] == 1
+
+
+@pytest.mark.asyncio
+async def test_idle_cleanup_is_opportunistic():
+    h = Harness(pool_idle_seconds=10)
+    await use(h, "app_development")  # last_used = 0
+    h.now = 100.0
+    await settle()
+    assert not h.pool("app_development").closed  # no timer: nothing closes by itself
+    h.now = 5.0
+    await use(h, "app_testing")
+    await settle()
+    assert not h.pool("app_development").closed
+    h.now = 11.0
+    await use(h, "app_testing")
+    await settle()
+    assert h.pool("app_development").closed
+    assert not h.pool("app_testing").closed
+    h.now = 30.0
+    async with h.registry.acquire("app_testing") as pool:  # the requested pool itself is not reaped
+        assert pool is h.pool("app_testing") and not pool.closed  # type: ignore[attr-defined]
+    assert h.calls["app_testing"] == 1
+
+
+@pytest.mark.asyncio
+async def test_removed_db_denies_new_lease_and_drains_old_one():
+    h = Harness()
+    async with h.registry.acquire("app_development") as pool:
+        h.discovered.discard("app_development")
+        names = [i.name for i in await h.registry.list_databases(refresh=True)]
+        assert "app_development" not in names
+        with pytest.raises(ValueError):
+            async with h.registry.acquire("app_development"):
+                pass
+        await settle()
+        assert not pool.closed  # type: ignore[attr-defined]
+        assert h.registry.active_leases("app_development") == 1
+    await settle()
+    assert pool.closed  # type: ignore[attr-defined]
+    assert h.calls["app_development"] == 1
+
+
+@pytest.mark.asyncio
+async def test_closing_pool_is_awaited_then_reopened():
+    h = Harness()
+    h.close_gates["app_development"] = asyncio.Event()
+    await use(h, "app_development")
+    first = h.pool("app_development")
+    h.discovered.discard("app_development")
+    await h.registry.list_databases(refresh=True)  # idle and revoked: closing now
+    await settle()
+    assert first.closes == 1
+    h.discovered.add("app_development")
+    task = asyncio.create_task(use(h, "app_development"))
+    await settle()
+    assert h.calls["app_development"] == 1  # waits for the close, does not join the closing pool
+    del h.close_gates["app_development"]
+    first.close_gate.set()  # type: ignore[union-attr]
+    await task
+    assert first.closed
+    assert h.calls["app_development"] == 2
+
+
+@pytest.mark.asyncio
+async def test_close_all_blocks_new_acquires():
+    h = Harness()
+    await use(h, "app_testing")
+    release = asyncio.Event()
+    entered = asyncio.Event()
+
+    async def hold() -> None:
+        async with h.registry.acquire("app_development"):
+            entered.set()
+            await release.wait()
+
+    holder = asyncio.create_task(hold())
+    await entered.wait()
+    closing = asyncio.create_task(h.registry.close_all())
+    await settle()
+    assert h.pool("app_testing").closed
+    assert not h.pool("app_development").closed  # active lease drains first
+    for name in ("app_testing", "app_development", "app_bad"):
+        with pytest.raises(DatabaseUnavailableError):
+            async with h.registry.acquire(name):
+                pass
+    assert not closing.done()
+    release.set()
+    await holder
+    await closing
+    assert h.pool("app_development").closed
+    assert "app_bad" not in h.calls
+
+
+@pytest.mark.asyncio
+async def test_close_all_twice_is_safe():
+    h = Harness()
+    await use(h, "app_testing")
+    await use(h, "app_development")
+    await asyncio.gather(h.registry.close_all(), h.registry.close_all())
+    await h.registry.close_all()
+    assert h.pool("app_testing").closes == 1
+    assert h.pool("app_development").closes == 1
+
+
+@pytest.mark.asyncio
+async def test_cancelled_open_releases_reserved_slot():
+    h = Harness(max_pools=1)
+    h.gates["app_testing"] = asyncio.Event()
+    opener = asyncio.create_task(use(h, "app_testing"))
+    await settle()
+    with pytest.raises(PoolCapacityError):  # the opening pool holds the only slot
+        await use(h, "app_development")
+    opener.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await opener
+    assert h.pool("app_testing").closed
+    await use(h, "app_development")
+    assert h.calls["app_development"] == 1
+
+
+@pytest.mark.asyncio
+async def test_double_cancel_during_failed_open_still_closes_pool():
+    h = Harness()
+    h.gates["app_testing"] = asyncio.Event()
+    h.close_gates["app_testing"] = asyncio.Event()
+    opener = asyncio.create_task(use(h, "app_testing"))
+    await settle()
+    opener.cancel()
+    await settle()
+    assert h.pool("app_testing").closes == 1
+    opener.cancel()  # second cancel lands while the pool is closing
+    with pytest.raises(asyncio.CancelledError):
+        await opener
+    h.close_gates["app_testing"].set()
+    await settle()
+    assert h.pool("app_testing").closed
+    await h.registry.close_all()
+
+
+@pytest.mark.asyncio
+async def test_start_validates_default_and_degrades_on_outage():
+    h = Harness()
+    h.discover.side_effect = OSError("bootstrap down")
+    await h.registry.start()  # transient: starts degraded, no raise
+    h.discover.side_effect = lambda _uri: {"app_development"}
+    with pytest.raises(DatabaseConfigurationError):
+        await h.registry.start()
+    assert not h.calls

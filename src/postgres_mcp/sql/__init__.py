@@ -6,6 +6,7 @@ from .bind_params import TableAliasVisitor
 from .database_registry import DatabaseInfo
 from .database_registry import DatabaseRegistry
 from .database_registry import DatabaseUnavailableError
+from .database_registry import PoolCapacityError
 from .extension_utils import check_extension
 from .extension_utils import check_hypopg_installation_status
 from .extension_utils import check_postgres_version_requirement
@@ -24,6 +25,7 @@ __all__ = [
     "DatabaseUnavailableError",
     "DbConnPool",
     "IndexDefinition",
+    "PoolCapacityError",
     "SafeSqlDriver",
     "SqlBindParams",
     "SqlDriver",
