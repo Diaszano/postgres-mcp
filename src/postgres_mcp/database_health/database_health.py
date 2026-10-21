@@ -36,6 +36,10 @@ class DatabaseHealthTool:
     def __init__(self, sql_driver):
         self.sql_driver = sql_driver
 
+    async def _database_name(self) -> str:
+        rows = await self.sql_driver.execute_query("SELECT current_database() AS current_database")
+        return str(rows[0].cells["current_database"]) if rows else "unknown"
+
     async def health(self, health_type: str) -> str:
         """Run database health checks for the specified components.
 
@@ -60,37 +64,41 @@ class DatabaseHealthTool:
             if HealthType.ALL in health_types:
                 health_types = [t.value for t in HealthType if t != HealthType.ALL]
 
+            # pg_stat_activity and replication views span the whole instance; everything else is per database.
+            db_scope = f"[database-scoped: {await self._database_name()}] "
+            instance_scope = "[instance-wide] "
+
             if HealthType.INDEX in health_types:
                 index_health = IndexHealthCalc(self.sql_driver)
-                result += "Invalid index check: " + await index_health.invalid_index_check() + "\n"
-                result += "Duplicate index check: " + await index_health.duplicate_index_check() + "\n"
-                result += "Index bloat: " + await index_health.index_bloat() + "\n"
-                result += "Unused index check: " + await index_health.unused_indexes() + "\n"
+                result += "Invalid index check: " + db_scope + await index_health.invalid_index_check() + "\n"
+                result += "Duplicate index check: " + db_scope + await index_health.duplicate_index_check() + "\n"
+                result += "Index bloat: " + db_scope + await index_health.index_bloat() + "\n"
+                result += "Unused index check: " + db_scope + await index_health.unused_indexes() + "\n"
 
             if HealthType.CONNECTION in health_types:
                 connection_health = ConnectionHealthCalc(self.sql_driver)
-                result += "Connection health: " + await connection_health.connection_health_check() + "\n"
+                result += "Connection health: " + instance_scope + await connection_health.connection_health_check() + "\n"
 
             if HealthType.VACUUM in health_types:
                 vacuum_health = VacuumHealthCalc(self.sql_driver)
-                result += "Vacuum health: " + await vacuum_health.transaction_id_danger_check() + "\n"
+                result += "Vacuum health: " + db_scope + await vacuum_health.transaction_id_danger_check() + "\n"
 
             if HealthType.SEQUENCE in health_types:
                 sequence_health = SequenceHealthCalc(self.sql_driver)
-                result += "Sequence health: " + await sequence_health.sequence_danger_check() + "\n"
+                result += "Sequence health: " + db_scope + await sequence_health.sequence_danger_check() + "\n"
 
             if HealthType.REPLICATION in health_types:
                 replication_health = ReplicationCalc(self.sql_driver)
-                result += "Replication health: " + await replication_health.replication_health_check() + "\n"
+                result += "Replication health: " + instance_scope + await replication_health.replication_health_check() + "\n"
 
             if HealthType.BUFFER in health_types:
                 buffer_health = BufferHealthCalc(self.sql_driver)
-                result += "Buffer health for indexes: " + await buffer_health.index_hit_rate() + "\n"
-                result += "Buffer health for tables: " + await buffer_health.table_hit_rate() + "\n"
+                result += "Buffer health for indexes: " + db_scope + await buffer_health.index_hit_rate() + "\n"
+                result += "Buffer health for tables: " + db_scope + await buffer_health.table_hit_rate() + "\n"
 
             if HealthType.CONSTRAINT in health_types:
                 constraint_health = ConstraintHealthCalc(self.sql_driver)
-                result += "Constraint health: " + await constraint_health.invalid_constraints_check() + "\n"
+                result += "Constraint health: " + db_scope + await constraint_health.invalid_constraints_check() + "\n"
 
             return result if result else "No health checks were performed."
         except Exception as e:

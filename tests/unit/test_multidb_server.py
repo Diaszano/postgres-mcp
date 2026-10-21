@@ -585,3 +585,145 @@ async def test_index_tools_use_database_specific_driver(method):
     assert [c.args[0] for c in tuner.call_args_list] == [selected, selected]
     assert [c.args[0] for c in text_presentation.call_args_list] == [selected, selected]
     assert [c.kwargs["sql_driver"] for c in top_calc.call_args_list] == [selected, selected]
+
+
+# --- Task 14: health and extension checks keep database context ---
+
+from postgres_mcp.server import analyze_db_health  # noqa: E402
+from postgres_mcp.sql import check_hypopg_installation_status  # noqa: E402
+from postgres_mcp.sql.database_catalog import DatabaseConfigurationError  # noqa: E402
+from postgres_mcp.sql.database_catalog import DiscoveryUnavailableError  # noqa: E402
+from postgres_mcp.sql.database_registry import DatabaseUnavailableError  # noqa: E402
+from postgres_mcp.sql.database_registry import PoolCapacityError  # noqa: E402
+
+
+class _Row:
+    def __init__(self, **cells):
+        self.cells = cells
+
+
+def _extension_driver(db: str, installed: bool, available: bool):
+    """Driver whose pg_extension / current_database answers belong to database `db`."""
+    driver = MagicMock()
+
+    async def execute_query(query, *a, **k):
+        if "current_database" in query:
+            return [_Row(current_database=db)]
+        if "pg_extension" in query:
+            return [_Row(extversion="1.0")] if installed else []
+        if "pg_available_extensions" in query:
+            return [_Row(default_version="1.0")] if available else []
+        return [_Row(server_version="16.2")]
+
+    driver.execute_query = AsyncMock(side_effect=execute_query)
+    return driver
+
+
+@pytest.mark.asyncio
+async def test_health_uses_selected_database(discovery):
+    with patch("postgres_mcp.server.DatabaseHealthTool") as tool:
+        tool.return_value.health = AsyncMock(return_value="ok")
+        await analyze_db_health("index", "app_testing")
+        await analyze_db_health("index")
+    assert discovery.requested == ["app_testing", None]
+    assert tool.call_args_list[0].args[0].conn is discovery.pools["app_testing"]
+    assert tool.call_args_list[1].args[0].conn is discovery.pools["app_main"]
+
+
+@pytest.mark.asyncio
+async def test_health_legacy_positional_order():
+    with patch("postgres_mcp.server.get_sql_driver") as gsd, patch("postgres_mcp.server.DatabaseHealthTool") as tool:
+
+        @asynccontextmanager
+        async def fake(database=None):
+            gsd.seen = database
+            yield MagicMock()
+
+        gsd.side_effect = fake
+        tool.return_value.health = AsyncMock(return_value="ok")
+        await analyze_db_health("index,vacuum")
+    assert gsd.seen is None
+    tool.return_value.health.assert_awaited_once_with(health_type="index,vacuum")
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        DatabaseUnavailableError("db gone"),
+        DiscoveryUnavailableError("no discovery"),
+        DatabaseConfigurationError("bad cfg"),
+        PoolCapacityError("full"),
+        ValueError("Database 'x' is not available"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_health_reports_expected_errors_as_error_response(exc):
+    @asynccontextmanager
+    async def boom(database=None):
+        raise exc
+        yield  # pragma: no cover
+
+    with patch("postgres_mcp.server.get_sql_driver", boom):
+        text = (await analyze_db_health("all", "x"))[0].text
+    assert text == f"Error: {exc}"
+
+
+@pytest.mark.asyncio
+async def test_health_does_not_swallow_unexpected_errors():
+    @asynccontextmanager
+    async def boom(database=None):
+        raise RuntimeError("bug")
+        yield  # pragma: no cover
+
+    with patch("postgres_mcp.server.get_sql_driver", boom), pytest.raises(RuntimeError):
+        await analyze_db_health("all", "x")
+
+
+@pytest.mark.asyncio
+async def test_replication_is_labeled_instance_wide():
+    from postgres_mcp.database_health import DatabaseHealthTool
+
+    tool = DatabaseHealthTool(_extension_driver("db_a", True, True))
+    with (
+        patch("postgres_mcp.database_health.database_health.ReplicationCalc") as rep,
+        patch("postgres_mcp.database_health.database_health.IndexHealthCalc") as idx,
+    ):
+        rep.return_value.replication_health_check = AsyncMock(return_value="r")
+        idx.return_value.invalid_index_check = AsyncMock(return_value="i")
+        idx.return_value.duplicate_index_check = AsyncMock(return_value="i")
+        idx.return_value.index_bloat = AsyncMock(return_value="i")
+        idx.return_value.unused_indexes = AsyncMock(return_value="i")
+        text = await tool.health("replication,index")
+    assert "Replication health: [instance-wide] r" in text
+    assert "Invalid index check: [database-scoped: db_a] i" in text
+
+
+@pytest.mark.asyncio
+async def test_connection_health_scope_is_declared():
+    from postgres_mcp.database_health import DatabaseHealthTool
+
+    tool = DatabaseHealthTool(_extension_driver("db_a", True, True))
+    with patch("postgres_mcp.database_health.database_health.ConnectionHealthCalc") as conn:
+        conn.return_value.connection_health_check = AsyncMock(return_value="c")
+        text = await tool.health("connection")
+    assert "Connection health: [instance-wide] c" in text
+
+
+@pytest.mark.asyncio
+async def test_missing_hypopg_in_second_db_is_reported():
+    ok, _ = await check_hypopg_installation_status(_extension_driver("db_a", True, True))
+    assert ok
+    ok, msg = await check_hypopg_installation_status(_extension_driver("db_b", False, True))
+    assert not ok
+    assert "db_b" in msg and "db_a" not in msg
+
+
+@pytest.mark.asyncio
+async def test_extension_probe_is_not_shared_across_databases():
+    a = _extension_driver("db_a", True, True)
+    b = _extension_driver("db_b", False, False)
+    first = await check_hypopg_installation_status(a)
+    second = await check_hypopg_installation_status(b)
+    third = await check_hypopg_installation_status(a)
+    assert first[0] is True and second[0] is False and third[0] is True
+    assert any("pg_extension" in c.args[0] for c in b.execute_query.await_args_list) or b.execute_query.await_count

@@ -9,8 +9,8 @@ from .sql_driver import SqlDriver
 
 logger = logging.getLogger(__name__)
 
-# Single global PostgreSQL version cache
-# TODO: If we support multiple connections in the future, this should be connection-specific
+# Server version cache: valid for all databases because the process talks to exactly one PostgreSQL instance.
+# Extension presence is never cached; check_extension always probes the pg_extension of the driver's database.
 _POSTGRES_VERSION = None
 
 
@@ -195,6 +195,9 @@ async def check_hypopg_installation_status(sql_driver: SqlDriver, message_type: 
         A formatted message about the HypoPG extension status with installation instructions
     """
     status = await check_extension(sql_driver, "hypopg", include_messages=False)
+    if not status.is_installed:
+        rows = await sql_driver.execute_query("SELECT current_database() AS current_database")
+        database = rows[0].cells["current_database"] if rows else "unknown"
 
     if status.is_installed:
         if message_type == "markdown":
@@ -205,7 +208,7 @@ async def check_hypopg_installation_status(sql_driver: SqlDriver, message_type: 
     if status.is_available:
         if message_type == "markdown":
             return False, (
-                "The **hypopg** extension is required to test hypothetical indexes, but it is not currently installed.\n\n"
+                f"The **hypopg** extension is required to test hypothetical indexes, but it is not currently installed in database '{database}'.\n\n"
                 "You can ask me to install 'hypopg' using the 'execute_query' tool.\n\n"
                 "**Is it safe?** Installing 'hypopg' is generally safe and a standard practice for index testing. "
                 "It adds a virtual layer that simulates indexes without actually creating them in the database. "
@@ -216,7 +219,7 @@ async def check_hypopg_installation_status(sql_driver: SqlDriver, message_type: 
             )
         else:
             return False, (
-                "The hypopg extension is required to test hypothetical indexes, but it is not currently installed.\n"
+                f"The hypopg extension is required to test hypothetical indexes, but it is not currently installed in database '{database}'.\n"
                 "You can ask me to install it using the 'execute_query' tool.\n"
                 "It is generally safe to install and allows testing indexes without creating them."
             )
@@ -226,7 +229,7 @@ async def check_hypopg_installation_status(sql_driver: SqlDriver, message_type: 
     # Extension is not available
     if message_type == "markdown":
         return False, (
-            "The **hypopg** extension is not available on this PostgreSQL server.\n\n"
+            f"The **hypopg** extension is not available on this PostgreSQL server (checked in database '{database}').\n\n"
             "To install HypoPG:\n"
             f"1. For Debian/Ubuntu: `sudo apt-get install postgresql-{major_version_str}-hypopg`\n"
             f"2. For RHEL/CentOS: `sudo yum install postgresql{major_version_str}-hypopg`\n"
@@ -236,7 +239,7 @@ async def check_hypopg_installation_status(sql_driver: SqlDriver, message_type: 
         )
     else:
         return False, (
-            "The hypopg extension is not available on this PostgreSQL server.\n"
+            f"The hypopg extension is not available on this PostgreSQL server (checked in database '{database}').\n"
             "To install HypoPG:\n"
             f"1. For Debian/Ubuntu: sudo apt-get install postgresql-{major_version_str}-hypopg\n"
             f"2. For RHEL/CentOS: sudo yum install postgresql{major_version_str}-hypopg\n"

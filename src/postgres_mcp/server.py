@@ -41,7 +41,11 @@ from .sql import SqlDriver
 from .sql import check_hypopg_installation_status
 from .sql import obfuscate_password
 from .sql.database_catalog import DatabaseCatalog
+from .sql.database_catalog import DatabaseConfigurationError
+from .sql.database_catalog import DiscoveryUnavailableError
 from .sql.database_registry import DatabaseRegistry
+from .sql.database_registry import DatabaseUnavailableError
+from .sql.database_registry import PoolCapacityError
 from .top_queries import TopQueriesCalc
 
 # Initialize FastMCP with default settings
@@ -583,16 +587,21 @@ async def analyze_db_health(
         description=f"Optional. Valid values are: {', '.join(sorted([t.value for t in HealthType]))}.",
         default="all",
     ),
+    database: Annotated[str | None, Field(description="Database to use; omit for the default database")] = None,
 ) -> ResponseType:
     """Analyze database health for specified components.
 
     Args:
         health_type: Comma-separated list of health check types to perform.
                     Valid values: index, connection, vacuum, sequence, replication, buffer, constraint, all
+        database: Database to analyze; connection and replication results stay instance-wide.
     """
-    async with get_sql_driver() as sql_driver:
-        health_tool = DatabaseHealthTool(sql_driver)
-        result = await health_tool.health(health_type=health_type)
+    try:
+        async with get_sql_driver(database) as sql_driver:
+            health_tool = DatabaseHealthTool(sql_driver)
+            result = await health_tool.health(health_type=health_type)
+    except (DatabaseUnavailableError, DiscoveryUnavailableError, DatabaseConfigurationError, PoolCapacityError, ValueError) as e:
+        return format_error_response(str(e))
     return format_text_response(result)
 
 
