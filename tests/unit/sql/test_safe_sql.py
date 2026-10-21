@@ -814,9 +814,11 @@ async def test_guard_allows_allowlisted_from_functions(safe_driver, mock_sql_dri
     mock_sql_driver.execute_query.assert_awaited_once()
 
 
-@pytest.mark.parametrize("query", ["VACUUM", "VACUUM t", "VACUUM ANALYZE t", "VACUUM (VERBOSE) t"])
+@pytest.mark.parametrize(
+    "query", ["VACUUM", "VACUUM FULL", "VACUUM (VERBOSE)", "VACUUM ANALYZE", "VACUUM t", "VACUUM ANALYZE t", "VACUUM (VERBOSE) t"]
+)
 def test_vacuum_rejected(safe_driver, query):
-    with pytest.raises(ValueError, match="VACUUM"):
+    with pytest.raises(ValueError, match="not allowed in restricted mode"):
         safe_driver.validate(query)
 
 
