@@ -48,7 +48,7 @@ def test_parses_csv_and_json_names_verbatim():
     assert config.default_database == "App_Test"
     assert config.allowed_databases == ("App_Test", "b")
     assert config.excluded_databases == ("x,y", "Z")
-    assert (config.discovery_ttl_seconds, config.max_pools, config.pool_max_size, config.pool_idle_seconds) == (60, 8, 5, 600)
+    assert (config.discovery_ttl_seconds, config.max_pools, config.pool_max_size, config.pool_idle_seconds) == (60, 4, 2, 600)
 
 
 @pytest.mark.parametrize(

@@ -314,8 +314,8 @@ uvx postgres-mcp
 | `DATABASE_ALLOWED_DATABASES` | empty (all eligible) | Allowlist of exact, case-sensitive names. |
 | `DATABASE_EXCLUDED_DATABASES` | empty | Denylist of exact names. It wins over the allowlist. |
 | `DATABASE_DISCOVERY_TTL_SECONDS` | `60` | How long the discovered list is cached. |
-| `DATABASE_MAX_POOLS` | `8` | Maximum number of database pools open at the same time. |
-| `DATABASE_POOL_MAX_SIZE` | `5` | Maximum connections per database pool. |
+| `DATABASE_MAX_POOLS` | `4` | Maximum number of database pools open at the same time. |
+| `DATABASE_POOL_MAX_SIZE` | `2` | Maximum connections per database pool. |
 | `DATABASE_POOL_IDLE_SECONDS` | `600` | Idle time after which an unused pool may be closed. |
 
 Both list variables accept a comma-separated list (`app,testing`, spaces around names are trimmed) or, when the value starts with `[`, a JSON array of strings (`["app", "name,with,comma"]`).

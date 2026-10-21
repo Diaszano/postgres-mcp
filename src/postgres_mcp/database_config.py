@@ -77,8 +77,8 @@ def parse_database_config(env: Mapping[str, str], database_url: str | None, acce
     allowed = _names(env, "DATABASE_ALLOWED_DATABASES")
     excluded = _names(env, "DATABASE_EXCLUDED_DATABASES")
     ttl = _int(env, "DATABASE_DISCOVERY_TTL_SECONDS", 60)
-    max_pools = _int(env, "DATABASE_MAX_POOLS", 8)
-    pool_max_size = _int(env, "DATABASE_POOL_MAX_SIZE", 5)
+    max_pools = _int(env, "DATABASE_MAX_POOLS", 4)
+    pool_max_size = _int(env, "DATABASE_POOL_MAX_SIZE", 2)
     idle = _int(env, "DATABASE_POOL_IDLE_SECONDS", 600)
 
     try:
