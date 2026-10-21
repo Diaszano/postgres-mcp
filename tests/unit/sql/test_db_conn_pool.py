@@ -212,3 +212,61 @@ async def test_connection_url_property():
     # Change the URL
     db_pool.connection_url = "postgresql://newuser:newpass@otherhost/otherdb"
     assert db_pool.connection_url == "postgresql://newuser:newpass@otherhost/otherdb"
+
+
+@pytest.fixture
+def open_pool():
+    """Pool mock whose connection()/cursor() work as real async context managers."""
+    cursor = MagicMock()
+    cursor.execute = AsyncMock()
+    cursor_cm = MagicMock()
+    cursor_cm.__aenter__ = AsyncMock(return_value=cursor)
+    cursor_cm.__aexit__ = AsyncMock(return_value=False)
+    conn = MagicMock()
+    conn.cursor.return_value = cursor_cm
+    conn_cm = MagicMock()
+    conn_cm.__aenter__ = AsyncMock(return_value=conn)
+    conn_cm.__aexit__ = AsyncMock(return_value=False)
+    pool = MagicMock()
+    pool.connection.return_value = conn_cm
+    pool.open = AsyncMock()
+    pool.close = AsyncMock()
+    return pool
+
+
+@pytest.mark.asyncio
+async def test_pool_respects_configured_size(open_pool):
+    """Configured min/max sizes reach AsyncConnectionPool."""
+    with patch("postgres_mcp.sql.sql_driver.AsyncConnectionPool", return_value=open_pool) as ctor:
+        db_pool = DbConnPool("postgresql://user:pass@localhost/db", min_size=0, max_size=3)
+        await db_pool.pool_connect()
+
+    assert ctor.call_args.kwargs["min_size"] == 0
+    assert ctor.call_args.kwargs["max_size"] == 3
+
+
+@pytest.mark.asyncio
+async def test_legacy_pool_defaults_to_one_five(open_pool):
+    """Legacy construction keeps min_size=1, max_size=5."""
+    with patch("postgres_mcp.sql.sql_driver.AsyncConnectionPool", return_value=open_pool) as ctor:
+        db_pool = DbConnPool("postgresql://user:pass@localhost/db")
+        await db_pool.pool_connect()
+
+    assert ctor.call_args.kwargs["min_size"] == 1
+    assert ctor.call_args.kwargs["max_size"] == 5
+
+
+@pytest.mark.asyncio
+async def test_connection_failure_can_recover_for_same_pool(open_pool):
+    """A failed open leaves the pool invalid, and a later pool_connect recovers on the same object."""
+    open_pool.open.side_effect = [Exception("db down"), None]
+
+    with patch("postgres_mcp.sql.sql_driver.AsyncConnectionPool", return_value=open_pool):
+        db_pool = DbConnPool("postgresql://user:pass@localhost/db")
+
+        with pytest.raises(ValueError, match="Connection attempt failed"):
+            await db_pool.pool_connect()
+        assert db_pool.is_valid is False
+
+        assert await db_pool.pool_connect() is open_pool
+        assert db_pool.is_valid is True

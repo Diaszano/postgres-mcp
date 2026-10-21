@@ -62,8 +62,10 @@ def obfuscate_password(text: str | None) -> str | None:
 class DbConnPool:
     """Database connection manager using psycopg's connection pool."""
 
-    def __init__(self, connection_url: Optional[str] = None):
+    def __init__(self, connection_url: Optional[str] = None, *, min_size: int = 1, max_size: int = 5):
         self.connection_url = connection_url
+        self.min_size = min_size
+        self.max_size = max_size
         self.pool: AsyncConnectionPool | None = None
         self._is_valid = False
         self._last_error = None
@@ -88,8 +90,8 @@ class DbConnPool:
             # Configure connection pool with appropriate settings
             self.pool = AsyncConnectionPool(
                 conninfo=url,
-                min_size=1,
-                max_size=5,
+                min_size=self.min_size,
+                max_size=self.max_size,
                 open=False,  # Don't connect immediately, let's do it explicitly
             )
 
@@ -212,11 +214,9 @@ class SqlDriver:
                 # Direct connection approach
                 return await self._execute_with_connection(self.conn, query, params, force_readonly=force_readonly)
         except Exception as e:
-            # Mark pool as invalid if there was a connection issue
-            if self.conn and self.is_pool:
-                self.conn._is_valid = False  # type: ignore
-                self.conn._last_error = str(e)  # type: ignore
-            elif self.conn and not self.is_pool:
+            # Pools are never invalidated here: ordinary SQL errors leave them usable, opening
+            # failures are handled in pool_connect, and psycopg_pool recovers broken connections.
+            if self.conn and not self.is_pool:
                 self.conn = None
 
             raise e

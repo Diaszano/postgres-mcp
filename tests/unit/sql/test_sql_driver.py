@@ -365,3 +365,32 @@ async def test_engine_url_connection():
         # Verify driver state
         assert driver.is_pool is True
         assert driver.conn is not None
+
+
+@pytest.mark.asyncio
+async def test_sql_syntax_error_does_not_invalidate_pool():
+    """An ordinary SQL error (missing column) must leave the pool usable."""
+    cursor = MagicMock()
+    cursor.execute = AsyncMock(side_effect=Exception('column "missing_column" does not exist'))
+    cursor_cm = MagicMock()
+    cursor_cm.__aenter__ = AsyncMock(return_value=cursor)
+    cursor_cm.__aexit__ = AsyncMock(return_value=False)
+    connection = MagicMock()
+    connection.cursor.return_value = cursor_cm
+    conn_cm = MagicMock()
+    conn_cm.__aenter__ = AsyncMock(return_value=connection)
+    conn_cm.__aexit__ = AsyncMock(return_value=False)
+    pool = MagicMock()
+    pool.connection.return_value = conn_cm
+
+    db_pool = MagicMock(spec=DbConnPool)
+    db_pool.pool_connect = AsyncMock(return_value=pool)
+    db_pool._is_valid = True
+    db_pool._last_error = None
+
+    driver = SqlDriver(conn=db_pool)
+    with pytest.raises(Exception, match="missing_column"):
+        await driver.execute_query("SELECT missing_column FROM table")
+
+    assert db_pool._is_valid is True
+    assert db_pool._last_error is None
