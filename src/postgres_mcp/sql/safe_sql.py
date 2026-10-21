@@ -913,6 +913,10 @@ class SafeSqlDriver(SqlDriver):
                 if isinstance(option, DefElem) and option.defname == "analyze":
                     raise ValueError("EXPLAIN ANALYZE is not supported")
 
+        # VACUUM cannot run inside the READ ONLY transaction block; ANALYZE (is_vacuumcmd False) is fine
+        if isinstance(node, VacuumStmt) and node.is_vacuumcmd:
+            raise ValueError("VACUUM is not allowed in restricted mode; ANALYZE is allowed")
+
         # Reject CREATE EXTENSION statements
         if isinstance(node, CreateExtensionStmt):
             if node.extname not in self.ALLOWED_EXTENSIONS:
