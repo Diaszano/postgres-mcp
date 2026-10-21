@@ -8,7 +8,9 @@ import pytest
 
 from postgres_mcp.database_config import parse_database_config
 from postgres_mcp.server import AccessMode
+from postgres_mcp.server import get_object_details
 from postgres_mcp.server import get_sql_driver
+from postgres_mcp.server import list_objects
 from postgres_mcp.server import list_schemas
 from postgres_mcp.sql import SafeSqlDriver
 from postgres_mcp.sql import SqlDriver
@@ -186,6 +188,109 @@ async def test_legacy_without_known_bootstrap_rejects_any_explicit_database():
         with pytest.raises(ValueError, match="'postgres'"):
             async with get_sql_driver("postgres"):
                 pass
+
+
+# --- Task 11: schema tools routed to the selected database ---
+
+_CATALOG_KEYS = (
+    "schema_name",
+    "table_schema",
+    "table_name",
+    "table_type",
+    "sequence_schema",
+    "sequence_name",
+    "data_type",
+    "start_value",
+    "increment",
+)
+
+
+def _catalog_execute(registry: FakeRegistry, calls: list[str]):
+    """Fake _execute_with_connection: every row carries the name of the pool it was asked on."""
+
+    async def fake(connection, query, params, force_readonly):
+        name = next(n for n, pool in registry.pools.items() if pool is connection)
+        calls.append(name)
+        return [SqlDriver.RowResult(cells={key: f"cat_{name}" for key in _CATALOG_KEYS})]
+
+    return AsyncMock(side_effect=fake)
+
+
+_SCHEMA_TOOL_CALLS = [
+    ("list_schemas", lambda db: list_schemas(database=db)),
+    ("list_objects", lambda db: list_objects("public", "table", database=db)),
+    ("get_object_details", lambda db: get_object_details("public", "s", "sequence", database=db)),
+]
+
+
+@pytest.mark.parametrize("call", [c for _, c in _SCHEMA_TOOL_CALLS], ids=[n for n, _ in _SCHEMA_TOOL_CALLS])
+@pytest.mark.asyncio
+async def test_schema_tools_use_selected_database(discovery, call):
+    calls: list[str] = []
+    with patch.object(SqlDriver, "_execute_with_connection", _catalog_execute(discovery, calls)):
+        selected = (await call("app_testing"))[0].text
+        default = (await call(None))[0].text
+    assert "cat_app_testing" in selected and "cat_app_main" not in selected
+    assert "cat_app_main" in default and "cat_app_testing" not in default
+    assert discovery.requested == ["app_testing", None]
+    assert set(calls) == {"app_testing", "app_main"}
+    assert discovery.leases == {"app_testing": 0, "app_main": 0}
+
+
+@pytest.mark.asyncio
+async def test_legacy_positional_calls_still_work():
+    bootstrap_pool = MagicMock(name="bootstrap")
+    registry = FakeRegistry()
+    registry.pools["app_main"] = bootstrap_pool
+    calls: list[str] = []
+    with (
+        patch("postgres_mcp.server.database_config", _config(False)),
+        patch("postgres_mcp.server.registry", registry),
+        patch("postgres_mcp.server.db_connection", bootstrap_pool),
+        patch("postgres_mcp.server.current_access_mode", AccessMode.UNRESTRICTED),
+        patch.object(SqlDriver, "_execute_with_connection", _catalog_execute(registry, calls)),
+    ):
+        schemas = (await list_schemas())[0].text
+        objects = (await list_objects("public", "sequence"))[0].text
+        details = (await get_object_details("public", "s", "sequence"))[0].text
+        explicit = (await list_schemas("app_main"))[0].text
+    assert all("cat_app_main" in text for text in (schemas, objects, details, explicit))
+    assert calls == ["app_main"] * 4
+    assert registry.requested == []
+
+
+@pytest.mark.parametrize("call", [c for _, c in _SCHEMA_TOOL_CALLS], ids=[n for n, _ in _SCHEMA_TOOL_CALLS])
+@pytest.mark.asyncio
+async def test_denied_database_never_queries(discovery, call):
+    class Denying(FakeRegistry):
+        @asynccontextmanager
+        async def acquire(self, database=None):
+            if database == "secret_db":
+                raise ValueError("Database 'secret_db' is not available")
+            async with super().acquire(database) as pool:
+                yield pool
+
+    denying = Denying()
+    execute = AsyncMock()
+    with patch("postgres_mcp.server.registry", denying), patch.object(SqlDriver, "_execute_with_connection", execute):
+        text = (await call("secret_db"))[0].text
+    assert text == "Error: Database 'secret_db' is not available"
+    execute.assert_not_called()
+    assert denying.pools == {}
+
+
+@pytest.mark.parametrize("call", [c for _, c in _SCHEMA_TOOL_CALLS], ids=[n for n, _ in _SCHEMA_TOOL_CALLS])
+@pytest.mark.asyncio
+async def test_legacy_denied_database_never_queries_via_tools(call):
+    execute = AsyncMock()
+    with (
+        patch("postgres_mcp.server.database_config", _config(False)),
+        patch("postgres_mcp.server.db_connection", MagicMock()),
+        patch.object(SqlDriver, "_execute_with_connection", execute),
+    ):
+        text = (await call("app_testing"))[0].text
+    assert text.startswith("Error: ") and "'app_testing'" in text
+    execute.assert_not_called()
 
 
 # --- Task 10: list_databases, CLI defaults, startup ---

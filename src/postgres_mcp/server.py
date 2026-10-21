@@ -151,10 +151,12 @@ async def list_databases(refresh: Annotated[bool, Field(description="Force a new
         readOnlyHint=True,
     ),
 )
-async def list_schemas() -> ResponseType:
+async def list_schemas(
+    database: Annotated[str | None, Field(description="Database to use; omit for the default database")] = None,
+) -> ResponseType:
     """List all schemas in the database."""
     try:
-        async with get_sql_driver() as sql_driver:
+        async with get_sql_driver(database) as sql_driver:
             rows = await sql_driver.execute_query(
                 """
                 SELECT
@@ -186,10 +188,11 @@ async def list_schemas() -> ResponseType:
 async def list_objects(
     schema_name: str = Field(description="Schema name"),
     object_type: str = Field(description="Object type: 'table', 'view', 'sequence', or 'extension'", default="table"),
+    database: Annotated[str | None, Field(description="Database to use; omit for the default database")] = None,
 ) -> ResponseType:
     """List objects of a given type in a schema."""
     try:
-        async with get_sql_driver() as sql_driver:
+        async with get_sql_driver(database) as sql_driver:
             if object_type in ("table", "view"):
                 table_type = "BASE TABLE" if object_type == "table" else "VIEW"
                 rows = await SafeSqlDriver.execute_param_query(
@@ -263,10 +266,11 @@ async def get_object_details(
     schema_name: str = Field(description="Schema name"),
     object_name: str = Field(description="Object name"),
     object_type: str = Field(description="Object type: 'table', 'view', 'sequence', or 'extension'", default="table"),
+    database: Annotated[str | None, Field(description="Database to use; omit for the default database")] = None,
 ) -> ResponseType:
     """Get detailed information about a database object."""
     try:
-        async with get_sql_driver() as sql_driver:
+        async with get_sql_driver(database) as sql_driver:
             if object_type in ("table", "view"):
                 # Get columns
                 col_rows = await SafeSqlDriver.execute_param_query(

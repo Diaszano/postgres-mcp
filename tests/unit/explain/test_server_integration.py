@@ -1,4 +1,5 @@
 import json
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -26,6 +27,16 @@ def mock_explain_plan_tool():
     return tool
 
 
+def driver_context(driver):
+    """Stand-in for get_sql_driver that yields the test's own driver."""
+
+    @asynccontextmanager
+    async def fake_get_sql_driver(database=None):
+        yield driver
+
+    return fake_get_sql_driver
+
+
 class MockCell:
     def __init__(self, data):
         self.cells = data
@@ -42,10 +53,12 @@ async def test_explain_query_integration():
     # Patch the format_text_response function
     with patch("postgres_mcp.server.format_text_response", return_value=[mock_text_result]):
         # Patch the get_sql_driver
-        with patch("postgres_mcp.server.get_sql_driver"):
+        driver = MagicMock()
+        with patch("postgres_mcp.server.get_sql_driver", driver_context(driver)):
             # Patch the ExplainPlanTool
-            with patch("postgres_mcp.server.ExplainPlanTool"):
+            with patch("postgres_mcp.server.ExplainPlanTool") as tool_cls:
                 result = await explain_query("SELECT * FROM users", hypothetical_indexes=None)
+                tool_cls.assert_called_once_with(sql_driver=driver)
 
                 # Verify result matches our expected plan data
                 assert isinstance(result, list)
@@ -64,10 +77,12 @@ async def test_explain_query_with_analyze_integration():
     # Patch the format_text_response function
     with patch("postgres_mcp.server.format_text_response", return_value=[mock_text_result]):
         # Patch the get_sql_driver
-        with patch("postgres_mcp.server.get_sql_driver"):
+        driver = MagicMock()
+        with patch("postgres_mcp.server.get_sql_driver", driver_context(driver)):
             # Patch the ExplainPlanTool
-            with patch("postgres_mcp.server.ExplainPlanTool"):
+            with patch("postgres_mcp.server.ExplainPlanTool") as tool_cls:
                 result = await explain_query("SELECT * FROM users", analyze=True, hypothetical_indexes=None)
+                tool_cls.assert_called_once_with(sql_driver=driver)
 
                 # Verify result matches our expected plan data
                 assert isinstance(result, list)
@@ -95,10 +110,12 @@ async def test_explain_query_with_hypothetical_indexes_integration():
         mock_safe_driver.execute_query = mock_execute_query
 
         # Patch the get_sql_driver
-        with patch("postgres_mcp.server.get_sql_driver", return_value=mock_safe_driver):
+        with patch("postgres_mcp.server.get_sql_driver", driver_context(mock_safe_driver)):
             # Patch the ExplainPlanTool
-            with patch("postgres_mcp.server.ExplainPlanTool"):
-                result = await explain_query(test_sql, hypothetical_indexes=test_indexes)
+            with patch("postgres_mcp.server.ExplainPlanTool") as tool_cls:
+                result = await explain_query(test_sql, analyze=False, hypothetical_indexes=test_indexes)
+                tool_cls.assert_called_once_with(sql_driver=mock_safe_driver)
+                mock_execute_query.assert_awaited()
 
                 # Verify result matches our expected plan data
                 assert isinstance(result, list)
@@ -126,10 +143,12 @@ async def test_explain_query_missing_hypopg_integration():
     # Patch the format_text_response function
     with patch("postgres_mcp.server.format_text_response", return_value=[mock_text_result]):
         # Patch the get_sql_driver
-        with patch("postgres_mcp.server.get_sql_driver", return_value=mock_safe_driver):
+        with patch("postgres_mcp.server.get_sql_driver", driver_context(mock_safe_driver)):
             # Patch the ExplainPlanTool
-            with patch("postgres_mcp.server.ExplainPlanTool"):
-                result = await explain_query(test_sql, hypothetical_indexes=test_indexes)
+            with patch("postgres_mcp.server.ExplainPlanTool") as tool_cls:
+                result = await explain_query(test_sql, analyze=False, hypothetical_indexes=test_indexes)
+                tool_cls.assert_called_once_with(sql_driver=mock_safe_driver)
+                mock_execute_query.assert_awaited()
 
                 # Verify result
                 assert isinstance(result, list)
