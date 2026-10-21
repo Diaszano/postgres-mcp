@@ -70,7 +70,8 @@ class Harness:
         self.now = 0.0
         config = make_config(**config_overrides)
         self.discover = AsyncMock(side_effect=lambda _uri: set(self.discovered))
-        catalog = DatabaseCatalog(config, discover=self.discover, clock=lambda: 0.0)
+        self.catalog_now = 0.0
+        catalog = DatabaseCatalog(config, discover=self.discover, clock=lambda: self.catalog_now)
         self.registry = DatabaseRegistry(config, catalog, pool_factory=self.factory, clock=lambda: self.now)
 
     def factory(self, name: str) -> FakePool:
@@ -507,6 +508,7 @@ async def test_database_readded_by_forced_refresh_keeps_its_pool():
         h.discovered = (NAMES - {"app_development"}) | {"app_new"}
         await use(h, "app_new")  # forced refresh drops app_development: revoked while leased
         h.discovered = NAMES | {"app_other"}
+        h.catalog_now += 6  # outside the 5s forced-refresh window
         await use(h, "app_other")  # forced refresh re-adds app_development
     await settle()
     assert not dev.closed  # type: ignore[attr-defined]

@@ -28,6 +28,7 @@ async def discover_postgres_databases(bootstrap_uri: str) -> set[str]:
 
 _MAX_STALE_GRACE_SECONDS = 300
 _DISCOVERY_TIMEOUT_SECONDS = 10
+_FORCED_REFRESH_INTERVAL_SECONDS = 5
 
 
 class DiscoveryUnavailableError(Exception):
@@ -52,8 +53,7 @@ class DatabaseCatalog:
         self._expires_at = 0.0
         self._inflight: asyncio.Task[None] | None = None
         self._generation = 0
-        if config.auto_discover:
-            self._check_default({config.default_database} if config.default_database else set())
+        self._last_forced_at: float = float("-inf")
 
     def _filter(self, discovered: set[str]) -> list[str]:
         allowed = set(self._config.allowed_databases)
@@ -111,7 +111,10 @@ class DatabaseCatalog:
         """Validate an exact name; the error never includes the URI or credentials."""
         generation = self._generation
         names, _ = await self.names()
-        if requested not in names and self._generation == generation:
+        window_open = self._clock() - self._last_forced_at >= _FORCED_REFRESH_INTERVAL_SECONDS
+        if requested not in names and self._generation == generation and (window_open or self._inflight is not None):
+            if window_open:
+                self._last_forced_at = self._clock()
             names, _ = await self.names(refresh=True)
         if requested not in names:
             raise ValueError(f"Database {requested!r} is not available")

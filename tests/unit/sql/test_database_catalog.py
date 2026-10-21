@@ -257,13 +257,13 @@ async def test_default_missing_after_successful_refresh_fails_configuration():
         await catalog.names()
 
 
-def test_default_excluded_by_config_fails_immediately():
-    discover = AsyncMock()
-    with pytest.raises(DatabaseConfigurationError):
-        DatabaseCatalog(make_config(excluded_databases=("App_Test",)), discover=discover, clock=FakeClock())
-    with pytest.raises(DatabaseConfigurationError):
-        DatabaseCatalog(make_config(allowed_databases=("other",)), discover=discover, clock=FakeClock())
-    discover.assert_not_awaited()
+@pytest.mark.asyncio
+async def test_default_excluded_by_config_fails_on_first_discovery():
+    discover = AsyncMock(return_value={"App_Test", "other"})
+    for overrides in ({"excluded_databases": ("App_Test",)}, {"allowed_databases": ("other",)}):
+        catalog = DatabaseCatalog(make_config(**overrides), discover=discover, clock=FakeClock())
+        with pytest.raises(DatabaseConfigurationError):
+            await catalog.names()
 
 
 @pytest.mark.asyncio
@@ -296,3 +296,20 @@ async def test_hung_discovery_serves_stale_snapshot(monkeypatch):
     assert await catalog.names() == (["App_Test", "other"], False)
     now[0] = 61.0  # past TTL, within stale grace
     assert await catalog.names() == (["App_Test", "other"], True)
+
+
+@pytest.mark.asyncio
+async def test_unknown_name_forces_at_most_one_refresh_per_5s():
+    now = [1000.0]
+    calls = []
+
+    async def discover(_uri):
+        calls.append(1)
+        return {"a"}
+
+    catalog = DatabaseCatalog(make_config(default_database="a", discovery_ttl_seconds=60), discover=discover, clock=lambda: now[0])
+    await catalog.names()  # first fetch
+    for _ in range(10):
+        with pytest.raises(ValueError):
+            await catalog.authorize("missing")
+    assert len(calls) == 2  # first fetch + one forced refresh in the window
