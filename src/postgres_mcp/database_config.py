@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from psycopg import ProgrammingError
 from psycopg.conninfo import conninfo_to_dict
+from psycopg.conninfo import make_conninfo
 
 _BOOLS = {"true": True, "1": True, "yes": True, "false": False, "0": False, "no": False}
 
@@ -96,3 +97,15 @@ def parse_database_config(env: Mapping[str, str], database_url: str | None, acce
 
     access_mode = access_mode_option or ("restricted" if auto_discover else "unrestricted")
     return DatabaseConfig(uri, auto_discover, default, allowed, excluded, ttl, max_pools, pool_max_size, idle, access_mode)
+
+
+def build_database_conninfo(config: DatabaseConfig, name: str) -> str:
+    """Return a libpq conninfo for database `name`, keeping every other bootstrap option.
+
+    Authorization is the caller's job (registry, after catalog.authorize).
+    """
+    try:
+        return make_conninfo(config.database_uri, dbname=name)
+    except (ProgrammingError, ValueError):
+        # Fixed message: psycopg's text may echo the DSN or the database name.
+        raise ValueError("Could not build a connection string for the requested database") from None

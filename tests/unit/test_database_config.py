@@ -1,5 +1,9 @@
-import pytest
+from dataclasses import replace
 
+import pytest
+from psycopg.conninfo import conninfo_to_dict
+
+from postgres_mcp.database_config import build_database_conninfo
 from postgres_mcp.database_config import parse_database_config
 
 URI = "postgresql://u:p@localhost/postgres"
@@ -111,3 +115,44 @@ def test_malformed_uri_error_hides_password():
         parse_database_config({"DATABASE_URI": "postgresql://u:s3cr3tPW@[host/db"}, None, None)
     assert "s3cr3tPW" not in str(exc.value)
     assert exc.value.__cause__ is None
+
+
+def _cfg(uri: str):
+    return parse_database_config({"DATABASE_URI": uri}, None, None)
+
+
+def test_conninfo_changes_only_dbname():
+    base = conninfo_to_dict(URI)
+    parsed = conninfo_to_dict(build_database_conninfo(_cfg(URI), "other"))
+    assert parsed.pop("dbname") == "other"
+    base.pop("dbname")
+    assert parsed == base
+
+
+def test_conninfo_preserves_ssl_options_user_host():
+    cfg = _cfg("postgresql://u:p@localhost:5433/postgres?sslmode=require&connect_timeout=7")
+    parsed = conninfo_to_dict(build_database_conninfo(cfg, 'Nome "Á,db"'))
+    assert parsed["dbname"] == 'Nome "Á,db"'
+    assert parsed["host"] == "localhost"
+    assert parsed["port"] == "5433"
+    assert parsed["user"] == "u"
+    assert parsed["password"] == "p"
+    assert parsed["sslmode"] == "require"
+    assert parsed["connect_timeout"] == "7"
+
+
+def test_conninfo_special_name_is_not_uri_injection():
+    name = "x?sslmode=disable&host=evil.example/y' host='evil"
+    parsed = conninfo_to_dict(build_database_conninfo(_cfg(URI + "?sslmode=require"), name))
+    assert parsed["dbname"] == name
+    assert parsed["host"] == "localhost"
+    assert parsed["sslmode"] == "require"
+
+
+def test_conninfo_never_logs_secret():
+    cfg = replace(_cfg(URI), database_uri="postgresql://u:s3cr3tPW@[host/db")  # bypasses parse-time check
+    with pytest.raises(ValueError) as exc:
+        build_database_conninfo(cfg, "badname")
+    assert "s3cr3tPW" not in str(exc.value)
+    assert "badname" not in str(exc.value)
+    assert exc.value.__suppress_context__ is True
