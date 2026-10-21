@@ -4,6 +4,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from psycopg import ProgrammingError
 from psycopg.conninfo import conninfo_to_dict
 
 _BOOLS = {"true": True, "1": True, "yes": True, "false": False, "0": False, "no": False}
@@ -79,7 +80,12 @@ def parse_database_config(env: Mapping[str, str], database_url: str | None, acce
     pool_max_size = _int(env, "DATABASE_POOL_MAX_SIZE", 5)
     idle = _int(env, "DATABASE_POOL_IDLE_SECONDS", 600)
 
-    default = _get(env, "DATABASE_DEFAULT_DATABASE") or conninfo_to_dict(uri).get("dbname")
+    try:
+        uri_dbname = conninfo_to_dict(uri).get("dbname")
+    except ProgrammingError:
+        # Fixed message: psycopg's text may echo the URI, including the password.
+        raise ValueError("DATABASE_URI is not a valid PostgreSQL connection URI") from None
+    default = _get(env, "DATABASE_DEFAULT_DATABASE") or uri_dbname
     if auto_discover:
         if not default:
             raise ValueError("DATABASE_DEFAULT_DATABASE or an explicit dbname in DATABASE_URI is required when DATABASE_AUTO_DISCOVER=true")

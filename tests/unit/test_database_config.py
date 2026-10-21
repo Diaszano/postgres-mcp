@@ -104,3 +104,10 @@ def test_bootstrap_excluded_with_allowed_default():
     config = parse_database_config(env, None, None)
     assert config.default_database == "app"
     assert config.excluded_databases == ("postgres",)
+
+
+def test_malformed_uri_error_hides_password():
+    with pytest.raises(ValueError) as exc:
+        parse_database_config({"DATABASE_URI": "postgresql://u:s3cr3tPW@[host/db"}, None, None)
+    assert "s3cr3tPW" not in str(exc.value)
+    assert exc.value.__cause__ is None
