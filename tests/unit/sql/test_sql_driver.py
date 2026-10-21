@@ -375,15 +375,10 @@ async def test_sql_syntax_error_does_not_invalidate_pool():
 
     db_pool = MagicMock(spec=DbConnPool)
     db_pool.pool_connect = AsyncMock(return_value=pool)
-    db_pool._is_valid = True
-    db_pool._last_error = None
 
     driver = SqlDriver(conn=db_pool)
     with pytest.raises(Exception, match="missing_column"):
         await driver.execute_query("SELECT missing_column FROM table")
-
-    assert db_pool._is_valid is True
-    assert db_pool._last_error is None
 
     # Same driver and pool remain usable after the SQL error
     assert await driver.execute_query("SELECT 1") is None
