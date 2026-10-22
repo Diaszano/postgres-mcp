@@ -315,6 +315,7 @@ async def test_concurrent_pool_connect_opens_one_pool():
 
     assert len(constructed) == 1
     assert not any(isinstance(r, Exception) for r in results)
+    assert all(r is constructed[0] for r in results)
 
 
 @pytest.mark.asyncio

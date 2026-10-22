@@ -275,7 +275,7 @@ async def test_hung_discovery_times_out_as_unavailable(monkeypatch):
         return {"App_Test"}
 
     catalog = DatabaseCatalog(make_config(), discover=hang)
-    with pytest.raises(DiscoveryUnavailableError):
+    with pytest.raises(DiscoveryUnavailableError, match="unavailable"):
         await catalog.names()
 
 
@@ -296,6 +296,7 @@ async def test_hung_discovery_serves_stale_snapshot(monkeypatch):
     assert await catalog.names() == (["App_Test", "other"], False)
     now[0] = 61.0  # past TTL, within stale grace
     assert await catalog.names() == (["App_Test", "other"], True)
+    assert calls[0] == 2  # the stale answer came from a second, hung discover
 
 
 @pytest.mark.asyncio
@@ -329,3 +330,49 @@ async def test_list_refresh_is_rate_limited():
     for _ in range(10):
         await catalog.names(refresh=True)
     assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_forced_refresh_window_boundary_is_inclusive():
+    now = [1000.0]
+    calls = []
+
+    async def discover(_uri):
+        calls.append(1)
+        return {"a"}
+
+    catalog = DatabaseCatalog(make_config(default_database="a", discovery_ttl_seconds=600), discover=discover, clock=lambda: now[0])
+    await catalog.names()  # first fetch
+    with pytest.raises(ValueError):
+        await catalog.authorize("missing")
+    assert len(calls) == 2
+    now[0] = 1004.9
+    with pytest.raises(ValueError):
+        await catalog.authorize("missing")
+    assert len(calls) == 2  # still inside the 5s window
+    now[0] = 1005.0
+    with pytest.raises(ValueError):
+        await catalog.authorize("missing")
+    assert len(calls) == 3  # exactly 5s elapsed: window reopens
+
+
+@pytest.mark.asyncio
+async def test_concurrent_unknown_names_join_one_refresh():
+    gate = asyncio.Event()
+    calls = []
+
+    async def discover(_uri):
+        calls.append(1)
+        if len(calls) > 1:
+            await gate.wait()
+        return {"a"}
+
+    catalog = DatabaseCatalog(make_config(default_database="a", discovery_ttl_seconds=600), discover=discover, clock=lambda: 1000.0)
+    await catalog.names()  # first fetch, not gated
+    tasks = [asyncio.create_task(catalog.authorize("missing")) for _ in range(5)]
+    for _ in range(5):
+        await asyncio.sleep(0)  # let every caller start and reach the gated refresh
+    gate.set()
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    assert all(isinstance(r, ValueError) for r in results)
+    assert len(calls) == 2  # first fetch + one shared forced refresh
