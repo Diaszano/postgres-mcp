@@ -68,6 +68,7 @@ from pglast.ast import TableSampleClause
 from pglast.ast import TargetEntry
 from pglast.ast import TypeCast
 from pglast.ast import TypeName
+from pglast.ast import VacuumRelation
 from pglast.ast import VacuumStmt
 from pglast.ast import VariableShowStmt
 from pglast.ast import WindowClause
@@ -691,6 +692,7 @@ class SafeSqlDriver(SqlDriver):
         VariableShowStmt,
         # VACUUM and ANALYZE components
         VacuumStmt,
+        VacuumRelation,  # ANALYZE t (cols); every VACUUM form is rejected by the is_vacuumcmd check
         # Sorting/grouping
         SortBy,
         SortGroupClause,

@@ -824,3 +824,14 @@ def test_vacuum_rejected(safe_driver, query):
 
 def test_analyze_still_allowed(safe_driver):
     safe_driver.validate("ANALYZE")
+
+
+@pytest.mark.parametrize("query", ["ANALYZE", "ANALYZE t", "ANALYZE t (a, b)", "ANALYZE public.t"])
+def test_analyze_allowed(query):
+    SafeSqlDriver(sql_driver=Mock()).validate(query)
+
+
+@pytest.mark.parametrize("query", ["VACUUM t", "VACUUM ANALYZE t", "VACUUM (VERBOSE) t", "VACUUM FULL"])
+def test_vacuum_with_table_still_rejected(query):
+    with pytest.raises(ValueError, match="not allowed in restricted mode"):
+        SafeSqlDriver(sql_driver=Mock()).validate(query)
