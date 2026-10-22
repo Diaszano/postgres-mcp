@@ -94,6 +94,11 @@ class DatabaseCatalog:
         if not self._config.auto_discover:
             default = self._config.default_database
             return ([default] if default else []), False
+        if refresh:
+            if self._clock() - self._last_forced_at >= _FORCED_REFRESH_INTERVAL_SECONDS:
+                self._last_forced_at = self._clock()
+            elif self._inflight is None:
+                refresh = False  # window closed and nothing to join: serve the cache
         if self._discovered is not None and not refresh and self._clock() < self._expires_at:
             return self._filter(self._discovered), False
         try:
@@ -111,10 +116,7 @@ class DatabaseCatalog:
         """Validate an exact name; the error never includes the URI or credentials."""
         generation = self._generation
         names, _ = await self.names()
-        window_open = self._clock() - self._last_forced_at >= _FORCED_REFRESH_INTERVAL_SECONDS
-        if requested not in names and self._generation == generation and (window_open or self._inflight is not None):
-            if window_open:
-                self._last_forced_at = self._clock()
+        if requested not in names and self._generation == generation:
             names, _ = await self.names(refresh=True)
         if requested not in names:
             raise ValueError(f"Database {requested!r} is not available")

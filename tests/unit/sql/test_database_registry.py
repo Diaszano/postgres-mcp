@@ -384,6 +384,7 @@ async def test_closing_pool_is_awaited_then_reopened():
     await settle()
     assert first.closes == 1
     h.discovered.add("app_development")
+    h.catalog_now += 6  # the list refresh used the forced-refresh window; let it reopen
     task = asyncio.create_task(use(h, "app_development"))
     await settle()
     assert h.calls["app_development"] == 1  # waits for the close, does not join the closing pool

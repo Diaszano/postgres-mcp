@@ -313,3 +313,19 @@ async def test_unknown_name_forces_at_most_one_refresh_per_5s():
         with pytest.raises(ValueError):
             await catalog.authorize("missing")
     assert len(calls) == 2  # first fetch + one forced refresh in the window
+
+
+@pytest.mark.asyncio
+async def test_list_refresh_is_rate_limited():
+    now = [1000.0]
+    calls = []
+
+    async def discover(_uri):
+        calls.append(1)
+        return {"a"}
+
+    catalog = DatabaseCatalog(make_config(default_database="a", discovery_ttl_seconds=60), discover=discover, clock=lambda: now[0])
+    await catalog.names()
+    for _ in range(10):
+        await catalog.names(refresh=True)
+    assert len(calls) == 2
