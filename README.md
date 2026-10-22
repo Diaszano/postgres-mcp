@@ -22,6 +22,8 @@
 
 </div>
 
+> **English** | [Português (Brasil)](README.pt-BR.md)
+
 ## Overview
 
 **Postgres MCP Pro** is an open source Model Context Protocol (MCP) server built to support you and your AI agents throughout the **entire development process**—from initial coding, through testing and deployment, and to production tuning and maintenance.
@@ -222,7 +224,7 @@ Replace `postgresql://...` with your [Postgres database connection URI](https://
 
 Postgres MCP Pro supports multiple *access modes* to give you control over the operations that the AI agent can perform on the database:
 - **Unrestricted Mode**: Allows full read/write access to modify data and schema. It is suitable for development environments.
-- **Restricted Mode**: Limits operations to read-only transactions and imposes constraints on resource utilization (presently only execution time). It is suitable for production environments.
+- **Restricted Mode**: Limits operations to read-only transactions and imposes constraints on resource utilization (presently only execution time). Only `SELECT`, `EXPLAIN` (without `ANALYZE`), `SHOW`, and `ANALYZE` statements are allowed; `VACUUM` is rejected because it cannot run inside a transaction block. A rejected statement returns an error that states the reason. It is suitable for production environments.
 
 To use restricted mode, replace `--access-mode=unrestricted` with `--access-mode=restricted` in the configuration examples above.
 
@@ -340,9 +342,12 @@ The mode is global to the server process, not per database.
 - Idle pools older than `DATABASE_POOL_IDLE_SECONDS` are closed opportunistically on later calls and catalog refreshes; there is no background timer.
 - Databases that disappear from the catalog stop accepting new calls and their pool is closed when running calls finish.
 - A connection failure on one database is reported for that database only; other databases and the pool of the failing one keep working after the problem is fixed. Ordinary SQL errors do not invalidate a pool.
+- Calls that wait for a pool that is being opened share that open's result. If the open fails, they get the same error instead of each retrying the connection in turn.
 
 **Refresh.** The list is cached for `DATABASE_DISCOVERY_TTL_SECONDS`. A database created later is picked up by `list_databases` with `refresh=true`, or by the first call after the TTL expires, without restarting the server.
-Asking for an unknown name forces a single refresh before the call is rejected.
+Asking for an unknown name forces a refresh before the call is rejected.
+Forced refreshes (`refresh=true` or an unknown name) run at most once every 5 seconds; inside that window the cached list is used, and concurrent requests share one in-flight discovery.
+A discovery query that does not finish within 10 seconds counts as a failed refresh.
 If a refresh fails, the previous list is served for a short grace period (at most 300 seconds), without admitting new names, and `list_databases` reports `catalog_stale: true`.
 If there is no valid list yet, the call fails with a "discovery is unavailable" error.
 If the bootstrap database is unreachable at startup the server still starts, in a degraded state.
