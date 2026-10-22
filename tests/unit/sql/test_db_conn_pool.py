@@ -315,3 +315,26 @@ async def test_concurrent_pool_connect_opens_one_pool():
 
     assert len(constructed) == 1
     assert not any(isinstance(r, Exception) for r in results)
+
+
+@pytest.mark.asyncio
+async def test_queued_callers_reuse_failed_open(monkeypatch):
+    attempts = []
+
+    class FailingPool:
+        def __init__(self, *args, **kwargs):
+            attempts.append(self)
+
+        async def open(self):
+            await asyncio.sleep(0.01)
+            raise RuntimeError("connection refused")
+
+        async def close(self):
+            pass
+
+    monkeypatch.setattr("postgres_mcp.sql.sql_driver.AsyncConnectionPool", FailingPool)
+    pool = DbConnPool("postgresql://u:p@localhost/db")
+    results = await asyncio.gather(*[pool.pool_connect() for _ in range(10)], return_exceptions=True)
+    assert len(attempts) == 1
+    assert all(isinstance(r, ValueError) for r in results)
+    assert all(str(r) == str(results[0]) for r in results)

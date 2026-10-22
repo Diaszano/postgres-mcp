@@ -71,6 +71,8 @@ class DbConnPool:
         self._is_valid = False
         self._last_error = None
         self._open_lock = asyncio.Lock()
+        self._open_attempts = 0
+        self._open_failure: ValueError | None = None
 
     async def pool_connect(self, connection_url: Optional[str] = None) -> AsyncConnectionPool:
         """Initialize connection pool with retry logic."""
@@ -78,10 +80,15 @@ class DbConnPool:
         if self.pool and self._is_valid:
             return self.pool
 
+        attempts_before = self._open_attempts
         async with self._open_lock:
             # Re-check: another caller may have opened the pool while we waited
             if self.pool and self._is_valid:
                 return self.pool
+
+            # An attempt finished while we waited and failed: reuse its error instead of retrying serially
+            if self._open_attempts != attempts_before and self._open_failure is not None:
+                raise self._open_failure
 
             url = connection_url or self.connection_url
             self.connection_url = url
@@ -112,6 +119,7 @@ class DbConnPool:
 
                 self._is_valid = True
                 self._last_error = None
+                self._open_failure = None
                 return self.pool
             except Exception as e:
                 self._is_valid = False
@@ -120,7 +128,10 @@ class DbConnPool:
                 # Clean up failed pool
                 await self.close()
 
-                raise ValueError(f"Connection attempt failed: {obfuscate_password(str(e))}") from e
+                # Counted on completion so callers that queued during this attempt see it as new
+                self._open_attempts += 1
+                self._open_failure = ValueError(f"Connection attempt failed: {obfuscate_password(str(e))}")
+                raise self._open_failure from e
 
     async def close(self) -> None:
         """Close the connection pool."""
