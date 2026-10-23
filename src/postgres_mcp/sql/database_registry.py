@@ -120,8 +120,9 @@ class DatabaseRegistry:
         name = await self._catalog.authorize(requested)
         # Read after authorize, so a forced refresh inside it is reflected (cache hit).
         names, _ = await self._catalog.names()
-        self._sweep(names, keep=name)
-        if name not in names:
+        authorized = name in names
+        self._sweep(names, keep=name if authorized else None)
+        if not authorized:
             raise ValueError(f"Database {name!r} is not available")
         entry = await self._lease(name)
         try:

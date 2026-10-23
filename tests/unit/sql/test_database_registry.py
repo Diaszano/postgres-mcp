@@ -396,6 +396,26 @@ async def test_refresh_revocation_blocks_new_lease(already_open):
 
 
 @pytest.mark.asyncio
+async def test_refresh_revocation_closes_idle_pool():
+    h = Harness()
+    async with h.registry.acquire("app_development") as pool:
+        pass
+    h.catalog.names = AsyncMock(
+        side_effect=[
+            (["app_development", "app_testing"], False),
+            (["app_testing"], False),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="Database 'app_development' is not available"):
+        async with h.registry.acquire("app_development"):
+            pass
+
+    await settle()
+    assert pool.closed
+
+
+@pytest.mark.asyncio
 async def test_closing_pool_is_awaited_then_reopened():
     h = Harness()
     h.close_gates["app_development"] = asyncio.Event()
