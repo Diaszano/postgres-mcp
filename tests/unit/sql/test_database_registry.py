@@ -1,5 +1,6 @@
 import asyncio
 from collections import Counter
+from contextlib import nullcontext
 from unittest.mock import AsyncMock
 
 import pytest
@@ -71,8 +72,8 @@ class Harness:
         config = make_config(**config_overrides)
         self.discover = AsyncMock(side_effect=lambda _uri: set(self.discovered))
         self.catalog_now = 0.0
-        catalog = DatabaseCatalog(config, discover=self.discover, clock=lambda: self.catalog_now)
-        self.registry = DatabaseRegistry(config, catalog, pool_factory=self.factory, clock=lambda: self.now)
+        self.catalog = DatabaseCatalog(config, discover=self.discover, clock=lambda: self.catalog_now)
+        self.registry = DatabaseRegistry(config, self.catalog, pool_factory=self.factory, clock=lambda: self.now)
 
     def factory(self, name: str) -> FakePool:
         self.calls[name] += 1
@@ -371,6 +372,27 @@ async def test_removed_db_denies_new_lease_and_drains_old_one():
     await settle()
     assert pool.closed  # type: ignore[attr-defined]
     assert h.calls["app_development"] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("already_open", [False, True])
+async def test_refresh_revocation_blocks_new_lease(already_open):
+    h = Harness()
+    existing_lease = h.registry.acquire("app_development") if already_open else nullcontext()
+    async with existing_lease:
+        h.catalog.names = AsyncMock(
+            side_effect=[
+                (["app_development", "app_testing"], False),
+                (["app_testing"], False),
+            ]
+        )
+
+        with pytest.raises(ValueError, match="Database 'app_development' is not available"):
+            async with h.registry.acquire("app_development"):
+                pass
+
+        assert h.registry.active_leases("app_development") == int(already_open)
+        assert h.calls["app_development"] == int(already_open)
 
 
 @pytest.mark.asyncio

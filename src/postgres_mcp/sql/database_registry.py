@@ -121,6 +121,8 @@ class DatabaseRegistry:
         # Read after authorize, so a forced refresh inside it is reflected (cache hit).
         names, _ = await self._catalog.names()
         self._sweep(names, keep=name)
+        if name not in names:
+            raise ValueError(f"Database {name!r} is not available")
         entry = await self._lease(name)
         try:
             yield entry.pool
