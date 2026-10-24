@@ -568,7 +568,16 @@ _EXPLAIN_CALLS = [
 @pytest.mark.asyncio
 async def test_explain_query_routes_by_database(discovery, call):
     calls: list[tuple[str, str]] = []
-    with patch.object(SqlDriver, "_execute_with_connection", _routing_execute(discovery, calls)):
+
+    @asynccontextmanager
+    async def fake_database_session(database=None, **options):
+        async with get_sql_driver(database) as driver:
+            yield driver
+
+    with (
+        patch.object(SqlDriver, "_execute_with_connection", _routing_execute(discovery, calls)),
+        patch("postgres_mcp.server.database_session", fake_database_session),
+    ):
         selected = (await call("app_testing"))[0].text
         selected_calls = list(calls)
         calls.clear()
@@ -610,11 +619,18 @@ async def test_index_tools_use_database_specific_driver(method):
 
     selected = MagicMock(name="selected_driver")
     requested: list[str | None] = []
+    session_requests: list[dict] = []
 
     @asynccontextmanager
     async def fake_get_sql_driver(database=None):
         requested.append(database)
         yield selected
+
+    @asynccontextmanager
+    async def fake_database_session(database=None, **options):
+        session_requests.append(options)
+        async with fake_get_sql_driver(database) as driver:
+            yield driver
 
     presentation = MagicMock()
     presentation.analyze_workload = AsyncMock(return_value="ok")
@@ -624,6 +640,8 @@ async def test_index_tools_use_database_specific_driver(method):
     top.get_top_queries_by_time = AsyncMock(return_value="ok")
     with (
         patch("postgres_mcp.server.get_sql_driver", fake_get_sql_driver),
+        patch("postgres_mcp.server.database_session", fake_database_session),
+        patch("postgres_mcp.server.current_access_mode", AccessMode.UNRESTRICTED),
         patch("postgres_mcp.server.DatabaseTuningAdvisor") as dta,
         patch("postgres_mcp.server.LLMOptimizerTool") as llm,
         patch("postgres_mcp.server.TextPresentation", return_value=presentation) as text_presentation,
@@ -635,6 +653,8 @@ async def test_index_tools_use_database_specific_driver(method):
         await get_top_queries(sort_by="mean_time", limit=3, database="app_two")
 
     assert requested == ["app_two"] * 4
+    assert len(session_requests) == (2 if method == "dta" else 0)
+    assert all(options["restricted"] is False for options in session_requests)
     tuner = dta if method == "dta" else llm
     assert [c.args[0] for c in tuner.call_args_list] == [selected, selected]
     assert [c.args[0] for c in text_presentation.call_args_list] == [selected, selected]
