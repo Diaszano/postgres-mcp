@@ -22,6 +22,8 @@ def restricted_database(multidb_postgres):
     finally:
         with pg.admin(database) as admin:
             admin.execute("DROP FUNCTION IF EXISTS public.lower(character varying)")
+            admin.execute("DROP OPERATOR IF EXISTS public.= (character varying, character varying)")
+            admin.execute("DROP FUNCTION IF EXISTS public.restricted_equal(character varying, character varying)")
             admin.execute("DROP TABLE public.restricted_marker")
 
 
@@ -36,6 +38,7 @@ async def test_restricted_does_not_trust_shadowed_functions(restricted_database)
         safe = SafeSqlDriver(SqlDriver(conn=connection))
         with pytest.raises(SQLValidationError):
             await safe.execute_query("SELECT lower('X'::varchar)")
+        safe = SafeSqlDriver(SqlDriver(conn=connection))
         rows = await safe.execute_query("SELECT pg_catalog.lower('X'::varchar) AS value")
         assert rows[0].cells == {"value": "x"}
         assert (await safe.execute_query("SELECT id FROM public.restricted_marker"))[0].cells == {"id": 1}
@@ -50,7 +53,43 @@ async def test_readonly_transaction_prevents_real_writes(restricted_database):
         # Exercise the database barrier directly, bypassing AST rejection.
         with pytest.raises(psycopg.errors.ReadOnlySqlTransaction):
             await driver.execute_query("INSERT INTO public.restricted_marker VALUES (2)", force_readonly=True)
+        driver = SqlDriver(conn=connection)
         assert (await driver.execute_query("SELECT count(*) AS count FROM public.restricted_marker", force_readonly=True))[0].cells == {"count": 1}
+
+
+@pytest.mark.asyncio
+async def test_restricted_does_not_trust_shadowed_operators(restricted_database):
+    pg, database = restricted_database
+    with pg.admin(database) as admin:
+        admin.execute(
+            """
+            CREATE FUNCTION public.restricted_equal(character varying, character varying)
+            RETURNS boolean LANGUAGE plpgsql AS $$
+            BEGIN
+                PERFORM pg_catalog.pg_advisory_lock(6413403, 3);
+                RETURN true;
+            END
+            $$
+            """
+        )
+        admin.execute("CREATE OPERATOR public.= (FUNCTION = public.restricted_equal, LEFTARG = character varying, RIGHTARG = character varying)")
+        # The exact public overload beats the catalog operator's implicit cast to text.
+        admin.execute("BEGIN READ ONLY")
+        assert admin.execute("SELECT 'a'::varchar = 'b'::varchar").fetchone()[0] is True
+        admin.execute("ROLLBACK")
+        with pg.admin(database) as observer:
+            assert observer.execute("SELECT pg_catalog.pg_try_advisory_lock(6413403, 3)").fetchone()[0] is False
+        admin.execute("SELECT pg_catalog.pg_advisory_unlock_all()")
+    async with await psycopg.AsyncConnection.connect(pg.uri(pg.mcp_role, database), autocommit=True) as connection:
+        safe = SafeSqlDriver(SqlDriver(conn=connection))
+        with pytest.raises(SQLValidationError):
+            await safe.execute_query("SELECT 'a'::varchar = 'b'::varchar")
+        with pg.admin(database) as observer:
+            assert observer.execute("SELECT pg_catalog.pg_try_advisory_lock(6413403, 3)").fetchone()[0] is True
+        safe = SafeSqlDriver(SqlDriver(conn=connection))
+        rows = await safe.execute_query("SELECT 'a'::varchar OPERATOR(pg_catalog.=) 'b'::varchar AS value")
+        assert rows[0].cells == {"value": False}
+        assert (await safe.execute_query("SELECT id FROM public.restricted_marker"))[0].cells == {"id": 1}
 
 
 @pytest.mark.asyncio
