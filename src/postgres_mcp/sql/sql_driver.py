@@ -176,6 +176,8 @@ class SqlDriver:
         self,
         conn: Any = None,
         engine_url: str | None = None,
+        *,
+        owns_transaction: bool = True,
     ):
         """
         Initialize with a PostgreSQL connection or pool.
@@ -183,7 +185,9 @@ class SqlDriver:
         Args:
             conn: PostgreSQL connection object or pool
             engine_url: Connection URL string as an alternative to providing a connection
+            owns_transaction: False when a session context owns transaction boundaries and access mode
         """
+        self.owns_transaction = owns_transaction
         if conn:
             self.conn = conn
             # Check if this is a connection pool
@@ -199,6 +203,8 @@ class SqlDriver:
     def connect(self):
         if self.conn is not None:
             return self.conn
+        if not self.owns_transaction:
+            raise ValueError("The database session is closed")
         if self.engine_url:
             self.conn = DbConnPool(self.engine_url)
             self.is_pool = True
@@ -241,7 +247,7 @@ class SqlDriver:
         except Exception as e:
             # Pools are never invalidated here: ordinary SQL errors leave them usable, opening
             # failures are handled in pool_connect, and psycopg_pool recovers broken connections.
-            if self.conn and not self.is_pool:
+            if self.conn and not self.is_pool and self.owns_transaction:
                 self.conn = None
 
             raise e
@@ -290,10 +296,11 @@ class SqlDriver:
         transaction_started = False
         try:
             async with connection.cursor(row_factory=dict_row) as control_cursor:
-                await control_cursor.execute("BEGIN TRANSACTION READ ONLY")
-                transaction_started = True
-                await control_cursor.execute("SET TRANSACTION READ ONLY")
-                await control_cursor.execute("SET LOCAL search_path = pg_catalog, public, pg_temp")
+                if self.owns_transaction:
+                    await control_cursor.execute("BEGIN TRANSACTION READ ONLY")
+                    transaction_started = True
+                    await control_cursor.execute("SET TRANSACTION READ ONLY")
+                    await control_cursor.execute("SET LOCAL search_path = pg_catalog, public, pg_temp")
                 remaining = remaining_query_seconds()
                 if remaining is not None:
                     milliseconds = max(1, math.ceil(remaining * 1000))
@@ -315,8 +322,9 @@ class SqlDriver:
                         timeout_seconds=timeout_seconds,
                         safe_row_yielding=safe_row_yielding,
                     )
-                await control_cursor.execute("ROLLBACK")
-                transaction_started = False
+                if transaction_started:
+                    await control_cursor.execute("ROLLBACK")
+                    transaction_started = False
                 return result
         except BaseException as e:
             if transaction_started:
@@ -334,13 +342,13 @@ class SqlDriver:
             async with connection.cursor(row_factory=dict_row) as cursor:
                 remaining = remaining_query_seconds()
                 # Start read-only transaction
-                if force_readonly:
+                if force_readonly and self.owns_transaction:
                     transaction_started = True
                     await cursor.execute("BEGIN TRANSACTION READ ONLY")
                     # BEGIN inside an existing transaction does not change its access mode.
                     await cursor.execute("SET TRANSACTION READ ONLY")
                     await cursor.execute("SET LOCAL search_path = pg_catalog, public, pg_temp")
-                elif remaining is not None:
+                elif remaining is not None and self.owns_transaction:
                     transaction_started = True
                     await cursor.execute("BEGIN")
 
@@ -364,7 +372,7 @@ class SqlDriver:
                     pass
 
                 if cursor.description is None:  # No results (like DDL statements)
-                    if not force_readonly:
+                    if not force_readonly and self.owns_transaction:
                         await cursor.execute("COMMIT")
                     elif transaction_started:
                         await cursor.execute("ROLLBACK")
@@ -375,7 +383,7 @@ class SqlDriver:
                 rows = await cursor.fetchall()
 
                 # End the transaction appropriately
-                if not force_readonly:
+                if not force_readonly and self.owns_transaction:
                     await cursor.execute("COMMIT")
                 elif transaction_started:
                     await cursor.execute("ROLLBACK")
