@@ -632,10 +632,10 @@ async def test_extension_check_query(safe_driver, mock_sql_driver):
 
 @pytest.mark.asyncio
 async def test_create_extension_query(safe_driver, mock_sql_driver):
-    """Test that CREATE EXTENSION queries are allowed"""
     query = "CREATE EXTENSION IF NOT EXISTS hypopg"
-    await safe_driver.execute_query(query)
-    mock_sql_driver.execute_query.assert_awaited_once_with("/* crystaldba */ " + query, params=None, force_readonly=True)
+    with pytest.raises(ValueError, match="Error validating query"):
+        await safe_driver.execute_query(query)
+    mock_sql_driver.execute_query.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -818,20 +818,22 @@ async def test_guard_allows_allowlisted_from_functions(safe_driver, mock_sql_dri
     "query", ["VACUUM", "VACUUM FULL", "VACUUM (VERBOSE)", "VACUUM ANALYZE", "VACUUM t", "VACUUM ANALYZE t", "VACUUM (VERBOSE) t"]
 )
 def test_vacuum_rejected(safe_driver, query):
-    with pytest.raises(ValueError, match="not allowed in restricted mode"):
+    with pytest.raises(ValueError, match="Error validating query"):
         safe_driver.validate(query)
 
 
-def test_analyze_still_allowed(safe_driver):
-    safe_driver.validate("ANALYZE")
+def test_analyze_rejected(safe_driver):
+    with pytest.raises(ValueError, match="Error validating query"):
+        safe_driver.validate("ANALYZE")
 
 
 @pytest.mark.parametrize("query", ["ANALYZE", "ANALYZE t", "ANALYZE t (a, b)", "ANALYZE public.t"])
-def test_analyze_allowed(query):
-    SafeSqlDriver(sql_driver=Mock()).validate(query)
+def test_analyze_forms_rejected(query):
+    with pytest.raises(ValueError, match="Error validating query"):
+        SafeSqlDriver(sql_driver=Mock()).validate(query)
 
 
 @pytest.mark.parametrize("query", ["VACUUM t", "VACUUM ANALYZE t", "VACUUM (VERBOSE) t", "VACUUM FULL"])
 def test_vacuum_with_table_still_rejected(query):
-    with pytest.raises(ValueError, match="not allowed in restricted mode"):
+    with pytest.raises(ValueError, match="Error validating query"):
         SafeSqlDriver(sql_driver=Mock()).validate(query)

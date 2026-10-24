@@ -21,17 +21,13 @@ from pglast.ast import BooleanTest
 from pglast.ast import BoolExpr
 from pglast.ast import CaseExpr
 from pglast.ast import CaseWhen
-from pglast.ast import ClosePortalStmt
 from pglast.ast import CoalesceExpr
 from pglast.ast import CollateClause
 from pglast.ast import ColumnRef
 from pglast.ast import CommonTableExpr
 from pglast.ast import CreateExtensionStmt
-from pglast.ast import DeallocateStmt
-from pglast.ast import DeclareCursorStmt
 from pglast.ast import DefElem
 from pglast.ast import ExplainStmt
-from pglast.ast import FetchStmt
 from pglast.ast import Float
 from pglast.ast import FromExpr
 from pglast.ast import FuncCall
@@ -45,7 +41,6 @@ from pglast.ast import Node
 from pglast.ast import NotifyStmt
 from pglast.ast import NullTest
 from pglast.ast import ParamRef
-from pglast.ast import PrepareStmt
 from pglast.ast import RangeFunction
 from pglast.ast import RangeSubselect
 from pglast.ast import RangeTableFunc
@@ -89,8 +84,7 @@ logger = logging.getLogger(__name__)
 
 
 class SafeSqlDriver(SqlDriver):
-    """A wrapper around any SqlDriver that only allows SELECT, ANALYZE, VACUUM, EXPLAIN SELECT, and
-    SHOW queries.
+    """A wrapper around any SqlDriver that only allows SELECT, EXPLAIN SELECT, and SHOW queries.
 
     Uses pglast to parse and validate SQL statements before execution.
     All other statement types (DDL, DML etc) are rejected.
@@ -102,25 +96,7 @@ class SafeSqlDriver(SqlDriver):
     # Pattern to validate LIKE expressions - must either start with % or end with %, but not both
     LIKE_PATTERN = re.compile(r"^[^%]+%$")
 
-    ALLOWED_STMT_TYPES: ClassVar[set[type]] = {
-        SelectStmt,  # Regular SELECT
-        ExplainStmt,  # EXPLAIN SELECT
-        CreateExtensionStmt,  # CREATE EXTENSION
-        VariableShowStmt,  # SHOW statements
-        VacuumStmt,  # VACUUM and ANALYZE statements
-        PrepareStmt,  # PREPARE statement (for prepared queries)
-        # ExecuteStmt,  # EXECUTE statement (for prepared queries)
-        DeallocateStmt,  # DEALLOCATE statement (for prepared queries)
-        # CopyStmt,  # COPY TO (for exporting query results - will be validated to ensure COPY FROM is not allowed)
-        # DiscardStmt,  # DISCARD (for discarding client-side caches)
-        DeclareCursorStmt,  # DECLARE CURSOR (for cursor operations)
-        ClosePortalStmt,  # CLOSE (for closing cursors)
-        FetchStmt,  # FETCH (for retrieving cursor results)
-        # CheckPointStmt,  # CHECKPOINT (read-only administrative command)
-        # ListenStmt,  # LISTEN (notification system)
-        # UnlistenStmt,  # UNLISTEN (notification system)
-        # VariableSetStmt,  # SET (for session variables - will be validated)
-    }
+    ALLOWED_STMT_TYPES: ClassVar[set[type]] = {SelectStmt, ExplainStmt, VariableShowStmt}
 
     ALLOWED_FUNCTIONS: ClassVar[set[str]] = {
         # Aggregate functions
@@ -880,10 +856,11 @@ class SafeSqlDriver(SqlDriver):
         self.sql_driver = sql_driver
         self.timeout = timeout
 
-    def _validate_node(self, node: Node) -> None:
+    @classmethod
+    def _validate_node(cls, node: Node) -> None:
         """Recursively validate a node and all its children"""
         # Check if node type is allowed
-        if not isinstance(node, tuple(self.ALLOWED_NODE_TYPES)):
+        if not isinstance(node, tuple(cls.ALLOWED_NODE_TYPES)):
             raise ValueError(f"Node type {type(node)} is not allowed")
 
         # Validate LIKE patterns
@@ -900,12 +877,14 @@ class SafeSqlDriver(SqlDriver):
 
         # Validate function calls
         if isinstance(node, FuncCall):
-            func_name = ".".join([str(n.sval) for n in node.funcname]).lower() if node.funcname else ""
-            # Strip pg_catalog schema if present
-            match = self.PG_CATALOG_PATTERN.match(func_name)
-            unqualified_name = match.group(1) if match else func_name
-            if unqualified_name not in self.ALLOWED_FUNCTIONS:
-                raise ValueError(f"Function {func_name} is not allowed")
+            parts = tuple(part.sval for part in node.funcname)
+            if not parts or (len(parts) > 1 and parts[:-1] != ("pg_catalog",)):
+                raise ValueError("Untrusted function schema is not allowed")
+            if parts[-1] not in cls.ALLOWED_FUNCTIONS:
+                raise ValueError("Function is not allowed")
+
+        if isinstance(node, A_Expr) and node.name and len(node.name) > 1 and node.name[0].sval != "pg_catalog":
+            raise ValueError("Untrusted operator schema is not allowed")
 
         # Reject SELECT statements with locking clauses
         if isinstance(node, SelectStmt) and getattr(node, "lockingClause", None):
@@ -923,7 +902,7 @@ class SafeSqlDriver(SqlDriver):
 
         # Reject CREATE EXTENSION statements
         if isinstance(node, CreateExtensionStmt):
-            if node.extname not in self.ALLOWED_EXTENSIONS:
+            if node.extname not in cls.ALLOWED_EXTENSIONS:
                 raise ValueError(f"CREATE EXTENSION {node.extname} is not supported")
 
         # Recursively validate all attributes that might be nodes
@@ -938,51 +917,24 @@ class SafeSqlDriver(SqlDriver):
                 # Skip attributes that don't exist (this is normal in pglast)
                 continue
 
-            self._validate_children(attr)
+            cls._validate_children(attr)
 
-    def _validate_children(self, attr: Any) -> None:
+    @classmethod
+    def _validate_children(cls, attr: Any) -> None:
         """Validate every node in attr, descending into nested lists and tuples.
 
         RangeFunction.functions is a tuple of (FuncCall, coldeflist) tuples: without nested
         descent, functions called in FROM / LATERAL / ROWS FROM would skip the allowlist.
         """
         if isinstance(attr, Node):
-            self._validate_node(attr)
+            cls._validate_node(attr)
         elif isinstance(attr, (list, tuple)):
             for item in attr:
-                self._validate_children(item)
+                cls._validate_children(item)
 
     def validate(self, query: str) -> None:
-        """Validate query is safe to execute; raises ValueError otherwise. Same checks as execute_query."""
-        try:
-            # Parse the SQL using pglast
-            parsed = pglast.parse_sql(query)
-            # Pretty print the parsed SQL for debugging
-            # print("Parsed SQL:")
-            # import pprint
-            # pprint.pprint(parsed)
-
-            # Validate each statement
-            try:
-                for stmt in parsed:
-                    if isinstance(stmt, RawStmt):
-                        # Check if the inner statement type is allowed
-                        if not isinstance(stmt.stmt, tuple(self.ALLOWED_STMT_TYPES)):
-                            raise ValueError(
-                                "Only SELECT, ANALYZE, VACUUM, EXPLAIN, SHOW and other read-only statements are allowed. Received raw statement: "
-                                + str(stmt.stmt)
-                            )
-                    else:
-                        if not isinstance(stmt, tuple(self.ALLOWED_STMT_TYPES)):
-                            raise ValueError(
-                                "Only SELECT, ANALYZE, VACUUM, EXPLAIN, SHOW and other read-only statements are allowed. Received: " + str(stmt)
-                            )
-                    self._validate_node(stmt)
-            except Exception as e:
-                raise SQLValidationError(f"Error validating query: {query}: {e}") from e
-
-        except pglast.parser.ParseError as e:
-            raise SQLValidationError("Failed to parse SQL statement") from e
+        """Apply the restricted SQL policy before execution."""
+        validate_restricted_sql(query)
 
     async def execute_query(
         self,
@@ -1041,3 +993,65 @@ class SafeSqlDriver(SqlDriver):
             return await sql_driver.execute_query(query_params)  # type: ignore
         else:
             return await sql_driver.execute_query(query)
+
+
+def validate_restricted_sql(sql: str) -> None:
+    """Reject statements outside the restricted AST policy; database barriers remain mandatory."""
+    try:
+        statements = pglast.parse_sql(sql)
+    except pglast.parser.ParseError as exc:
+        raise SQLValidationError("Failed to parse SQL statement") from exc
+    try:
+        if not statements:
+            raise ValueError("An SQL statement is required")
+        for statement in statements:
+            node = statement.stmt if isinstance(statement, RawStmt) else statement
+            if not isinstance(node, tuple(SafeSqlDriver.ALLOWED_STMT_TYPES)):
+                raise ValueError("Only SELECT, EXPLAIN SELECT and SHOW are allowed")
+            SafeSqlDriver._validate_node(statement)
+    except ValueError as exc:
+        raise SQLValidationError("Error validating query: statement is not allowed") from exc
+
+
+async def validate_restricted_function_resolution(cursor: Any, query: str) -> None:
+    """Reject public overloads unless they belong to an explicitly trusted extension."""
+    try:
+        statements = pglast.parse_sql(query)
+    except pglast.parser.ParseError:
+        # Direct SqlDriver callers may use psycopg placeholders; SafeSqlDriver has already parsed its SQL.
+        return
+    names: set[str] = set()
+
+    def visit(value: Any) -> None:
+        if isinstance(value, FuncCall) and len(value.funcname) == 1:
+            names.add(value.funcname[0].sval)
+        if isinstance(value, Node):
+            for attribute in value.__slots__:
+                if not attribute.startswith("_"):
+                    visit(getattr(value, attribute, None))
+        elif isinstance(value, (tuple, list)):
+            for item in value:
+                visit(item)
+
+    visit(statements)
+    if not names:
+        return
+    await cursor.execute(
+        """
+        SELECT EXISTS (
+            SELECT 1 FROM pg_catalog.pg_proc AS p
+            JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace
+            WHERE n.nspname = 'public' AND p.proname = ANY(%s)
+              AND NOT EXISTS (
+                  SELECT 1 FROM pg_catalog.pg_depend AS d
+                  JOIN pg_catalog.pg_extension AS e ON e.oid = d.refobjid
+                  WHERE d.classid = 'pg_catalog.pg_proc'::pg_catalog.regclass
+                    AND d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass
+                    AND d.objid = p.oid AND d.deptype = 'e' AND e.extname = ANY(%s)
+              )
+        ) AS untrusted
+        """,
+        (sorted(names), sorted(SafeSqlDriver.ALLOWED_EXTENSIONS)),
+    )
+    if (await cursor.fetchone())["untrusted"]:
+        raise SQLValidationError("Error validating query: untrusted function resolution")

@@ -248,8 +248,14 @@ class SqlDriver:
             async with connection.cursor(row_factory=dict_row) as cursor:
                 # Start read-only transaction
                 if force_readonly:
-                    await cursor.execute("BEGIN TRANSACTION READ ONLY")
                     transaction_started = True
+                    await cursor.execute("BEGIN TRANSACTION READ ONLY")
+                    # BEGIN inside an existing transaction does not change its access mode.
+                    await cursor.execute("SET TRANSACTION READ ONLY")
+                    await cursor.execute("SET LOCAL search_path = pg_catalog, public, pg_temp")
+                    from .safe_sql import validate_restricted_function_resolution
+
+                    await validate_restricted_function_resolution(cursor, query)
 
                 if params:
                     await cursor.execute(query, params)
@@ -280,7 +286,7 @@ class SqlDriver:
 
                 return [SqlDriver.RowResult(cells=dict(row)) for row in rows]
 
-        except Exception as e:
+        except BaseException as e:
             # Try to roll back the transaction if it's still active
             if transaction_started:
                 try:
