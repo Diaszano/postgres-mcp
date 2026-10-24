@@ -24,6 +24,7 @@ from typing import Literal
 
 from postgres_mcp.database_config import DatabaseConfig
 from postgres_mcp.database_config import build_database_conninfo
+from postgres_mcp.security.errors import DatabaseNotAllowedError
 
 from .database_catalog import DatabaseCatalog
 from .database_catalog import DiscoveryUnavailableError
@@ -123,7 +124,7 @@ class DatabaseRegistry:
         authorized = name in names
         self._sweep(names, keep=name if authorized else None)
         if not authorized:
-            raise ValueError(f"Database {name!r} is not available")
+            raise DatabaseNotAllowedError("The requested database is not available.")
         entry = await self._lease(name)
         try:
             yield entry.pool

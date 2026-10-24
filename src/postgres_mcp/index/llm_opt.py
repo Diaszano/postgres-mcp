@@ -105,7 +105,6 @@ class LLMOptimizerTool(IndexTuningBase):
 
         # Get the explain plan JSON
         explain_plan_json = explain_result.value
-        logger.debug("Generated explain plan: %s", explain_plan_json)
 
         # Extract indexes used in the explain plan
         indexes_used: set[Index] = await self._extract_indexes_from_explain_plan_with_columns(explain_plan_json)
