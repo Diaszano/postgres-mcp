@@ -25,6 +25,9 @@ class DatabaseNotAllowedError(ValueError):
 
 def to_public_error(exc: BaseException) -> PublicToolError:
     """Map internal failures to a stable public code and fixed safe message."""
+    if isinstance(exc, PublicToolError):
+        return exc
+
     from postgres_mcp.sql.database_catalog import DatabaseConfigurationError
     from postgres_mcp.sql.database_catalog import DiscoveryUnavailableError
     from postgres_mcp.sql.database_registry import DatabaseUnavailableError

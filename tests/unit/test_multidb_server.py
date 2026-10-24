@@ -542,8 +542,11 @@ def test_execute_sql_and_explain_signatures_keep_legacy_defaults():
     import inspect
 
     execute_params = inspect.signature(execute_sql).parameters
-    assert list(execute_params) == ["sql", "database"]
+    assert list(execute_params) == ["sql", "database", "max_rows", "timeout_seconds"]
     assert execute_params["sql"].default.default == "all"
+    assert execute_params["database"].default is None
+    assert execute_params["max_rows"].default is None
+    assert execute_params["timeout_seconds"].default is None
     explain_params = inspect.signature(explain_query).parameters
     assert list(explain_params) == ["sql", "analyze", "hypothetical_indexes", "database"]
     assert explain_params["analyze"].default.default is False

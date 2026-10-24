@@ -35,14 +35,15 @@ from .explain import ExplainPlanTool
 from .index.index_opt_base import MAX_NUM_INDEX_TUNING_QUERIES
 from .index.llm_opt import LLMOptimizerTool
 from .index.presentation import TextPresentation
+from .query_limits.config import QueryBudgetConfig
+from .query_limits.config import parse_query_budget_config
+from .query_limits.policy import resolve_query_limits
 from .security.errors import DatabaseNotAllowedError
 from .security.errors import log_public_error
 from .security.errors import to_public_error
 from .security.transport import HttpAuthConfig
 from .security.transport import run_authenticated_http
 from .security.transport import validate_http_deployment
-from .query_limits.config import QueryBudgetConfig
-from .query_limits.config import parse_query_budget_config
 from .sql import DbConnPool
 from .sql import SafeSqlDriver
 from .sql import SqlDriver
@@ -83,6 +84,7 @@ class AccessMode(str, Enum):
 db_connection = DbConnPool()
 current_access_mode = AccessMode.UNRESTRICTED
 shutdown_in_progress = False
+query_budget_config = QueryBudgetConfig()
 database_config: DatabaseConfig | None = None  # None until startup parses it: legacy mode
 registry: DatabaseRegistry | None = None  # used only when database_config.auto_discover
 
@@ -503,9 +505,12 @@ If there is no hypothetical index, you can pass an empty list.""",
 async def execute_sql(
     sql: str = Field(description="SQL to run", default="all"),
     database: Annotated[str | None, Field(description="Database to use; omit for the default database")] = None,
+    max_rows: int | None = None,
+    timeout_seconds: int | None = None,
 ) -> ResponseType:
     """Executes a SQL query against the database."""
     try:
+        resolve_query_limits(query_budget_config, max_rows, timeout_seconds)
         async with get_sql_driver(database) as sql_driver:
             rows = await sql_driver.execute_query(sql)  # type: ignore
             if rows is None:
@@ -703,7 +708,7 @@ async def main():
         except ValueError as exc:
             parser.error(str(exc))
 
-    global current_access_mode, database_config, registry
+    global current_access_mode, database_config, registry, query_budget_config
     # Configuration errors (including a default database denied by the filters) propagate: never masked.
     database_config = parse_database_config(os.environ, args.database_url, args.access_mode)
     try:
