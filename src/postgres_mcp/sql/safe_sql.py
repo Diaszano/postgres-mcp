@@ -1014,17 +1014,20 @@ def validate_restricted_sql(sql: str) -> None:
 
 
 async def validate_restricted_function_resolution(cursor: Any, query: str) -> None:
-    """Reject public overloads unless they belong to an explicitly trusted extension."""
+    """Reject public function/operator overloads backed by untrusted functions."""
     try:
         statements = pglast.parse_sql(query)
     except pglast.parser.ParseError:
         # Direct SqlDriver callers may use psycopg placeholders; SafeSqlDriver has already parsed its SQL.
         return
     names: set[str] = set()
+    operators: set[str] = set()
 
     def visit(value: Any) -> None:
         if isinstance(value, FuncCall) and len(value.funcname) == 1:
             names.add(value.funcname[0].sval)
+        if isinstance(value, A_Expr) and value.name and len(value.name) == 1:
+            operators.add(value.name[0].sval)
         if isinstance(value, Node):
             for attribute in value.__slots__:
                 if not attribute.startswith("_"):
@@ -1034,14 +1037,22 @@ async def validate_restricted_function_resolution(cursor: Any, query: str) -> No
                 visit(item)
 
     visit(statements)
-    if not names:
+    if not names and not operators:
         return
     await cursor.execute(
         """
         SELECT EXISTS (
             SELECT 1 FROM pg_catalog.pg_proc AS p
             JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace
-            WHERE n.nspname = 'public' AND p.proname = ANY(%s)
+            WHERE (
+                (n.nspname = 'public' AND p.proname = ANY(%s))
+                OR p.oid IN (
+                    SELECT o.oprcode FROM pg_catalog.pg_operator AS o
+                    JOIN pg_catalog.pg_namespace AS op_namespace ON op_namespace.oid = o.oprnamespace
+                    WHERE op_namespace.nspname = 'public' AND o.oprname = ANY(%s)
+                )
+            )
+              AND n.nspname <> 'pg_catalog'
               AND NOT EXISTS (
                   SELECT 1 FROM pg_catalog.pg_depend AS d
                   JOIN pg_catalog.pg_extension AS e ON e.oid = d.refobjid
@@ -1051,7 +1062,7 @@ async def validate_restricted_function_resolution(cursor: Any, query: str) -> No
               )
         ) AS untrusted
         """,
-        (sorted(names), sorted(SafeSqlDriver.ALLOWED_EXTENSIONS)),
+        (sorted(names), sorted(operators), sorted(SafeSqlDriver.ALLOWED_EXTENSIONS)),
     )
     if (await cursor.fetchone())["untrusted"]:
         raise SQLValidationError("Error validating query: untrusted function resolution")
