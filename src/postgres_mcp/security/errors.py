@@ -3,6 +3,7 @@
 import logging
 
 from psycopg import OperationalError
+from psycopg.errors import QueryCanceled
 
 
 class PublicToolError(Exception):
@@ -41,6 +42,8 @@ def to_public_error(exc: BaseException) -> PublicToolError:
         return PublicToolError("DATABASE_NOT_ALLOWED", "The requested database is not available.")
     if isinstance(exc, SQLValidationError):
         return PublicToolError("SQL_VALIDATION_FAILED", "The SQL statement is not allowed.")
+    if isinstance(exc, QueryCanceled):
+        return PublicToolError("QUERY_TIMEOUT", "The query exceeded its time limit.", retryable=True)
     if isinstance(exc, OperationalError):
         return PublicToolError("DATABASE_UNAVAILABLE", "The database is temporarily unavailable.", retryable=True)
     return PublicToolError("INTERNAL_ERROR", "The operation failed.")

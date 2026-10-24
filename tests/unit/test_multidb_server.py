@@ -512,6 +512,50 @@ async def test_execute_sql_routes_by_database(discovery):
     assert discovery.leases == {"app_testing": 0, "app_main": 0}
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("access_mode", [AccessMode.RESTRICTED, AccessMode.UNRESTRICTED])
+async def test_database_selection_and_access_mode_unchanged(discovery, monkeypatch, access_mode):
+    from postgres_mcp.query_limits.config import QueryBudgetConfig
+    from postgres_mcp.query_limits.results import BoundedQueryResult
+
+    monkeypatch.setattr(server, "query_budget_config", QueryBudgetConfig(enabled=True))
+    monkeypatch.setattr(server, "current_access_mode", access_mode)
+    calls = []
+
+    async def bounded(driver, query, **limits):
+        name = next(name for name, pool in discovery.pools.items() if pool is driver.conn)
+        assert discovery.leases[name] == 1
+        calls.append(name)
+        return BoundedQueryResult([{"db": name}], 1, False, None, 0, limits["timeout_seconds"])
+
+    with patch.object(SqlDriver, "execute_bounded_query", bounded):
+        selected = (await execute_sql("SELECT current_database()", "app_testing"))[0].text
+        default = (await execute_sql("SELECT current_database()"))[0].text
+        if access_mode == AccessMode.RESTRICTED:
+            assert "not allowed" in (await execute_sql("SELECT secret_function()"))[0].text
+    assert '"db":"app_testing"' in selected
+    assert '"db":"app_main"' in default
+    assert calls == ["app_testing", "app_main"]
+    assert discovery.leases == {"app_testing": 0, "app_main": 0}
+
+
+@pytest.mark.asyncio
+async def test_guarded_unknown_database_never_falls_back(discovery, monkeypatch):
+    from postgres_mcp.query_limits.config import QueryBudgetConfig
+
+    @asynccontextmanager
+    async def reject(database=None):
+        raise DatabaseNotAllowedError("private database")
+        yield
+
+    monkeypatch.setattr(server, "query_budget_config", QueryBudgetConfig(enabled=True))
+    monkeypatch.setattr(discovery, "acquire", reject)
+    with patch.object(SqlDriver, "execute_bounded_query", AsyncMock()) as bounded:
+        assert (await execute_sql("SELECT 1", "unknown"))[0].text == "Error: The requested database is not available."
+    bounded.assert_not_called()
+    assert discovery.pools == {}
+
+
 _EXPLAIN_CALLS = [
     # Direct calls bypass FastMCP, so Field() defaults must be passed explicitly.
     ("explain", lambda db: explain_query("SELECT 1", False, [], database=db)),
@@ -542,7 +586,7 @@ def test_execute_sql_and_explain_signatures_keep_legacy_defaults():
     import inspect
 
     execute_params = inspect.signature(execute_sql).parameters
-    assert list(execute_params) == ["sql", "database", "max_rows", "timeout_seconds"]
+    assert list(execute_params) == ["sql", "database", "max_rows", "timeout_seconds", "page_size", "pagination"]
     assert execute_params["sql"].default.default == "all"
     assert execute_params["database"].default is None
     assert execute_params["max_rows"].default is None

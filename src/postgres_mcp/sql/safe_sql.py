@@ -76,6 +76,8 @@ from psycopg.sql import Composable
 from psycopg.sql import Literal
 from typing_extensions import LiteralString
 
+from ..query_limits.results import BoundedQueryResult
+from ..security.errors import PublicToolError
 from ..security.errors import SQLValidationError
 from ..security.errors import log_public_error
 from .sql_driver import SqlDriver
@@ -959,10 +961,7 @@ class SafeSqlDriver(SqlDriver):
                     )
             except asyncio.TimeoutError as e:
                 log_public_error(logger, "restricted_query_timeout", e, level=logging.WARNING)
-                raise ValueError(
-                    f"Query execution timed out after {self.timeout} seconds in restricted mode. "
-                    "Consider simplifying your query or increasing the timeout."
-                ) from e
+                raise PublicToolError("QUERY_TIMEOUT", "The query exceeded its time limit.", retryable=True) from e
             except Exception as e:
                 log_public_error(logger, "restricted_execute_query", e)
                 raise
@@ -972,6 +971,24 @@ class SafeSqlDriver(SqlDriver):
                 params=params,
                 force_readonly=True,
             )
+
+    async def execute_bounded_query(
+        self,
+        query: LiteralString,
+        *,
+        max_rows: int,
+        max_result_bytes: int,
+        timeout_seconds: int,
+        safe_row_yielding: bool = False,
+    ) -> BoundedQueryResult:
+        self.validate(query)
+        return await self.sql_driver.execute_bounded_query(
+            query,
+            max_rows=max_rows,
+            max_result_bytes=max_result_bytes,
+            timeout_seconds=timeout_seconds,
+            safe_row_yielding=safe_row_yielding,
+        )
 
     @staticmethod
     def sql_to_query(sql: Composable) -> str:
