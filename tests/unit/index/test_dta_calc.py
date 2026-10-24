@@ -21,6 +21,24 @@ from postgres_mcp.index.dta_calc import IndexRecommendation
 logger = getLogger(__name__)
 
 
+@pytest.mark.asyncio
+async def test_existing_index_literals_are_not_logged(create_dta, caplog):
+    definition = "CREATE INDEX private_idx ON users (email) WHERE email = 'private-index-sentinel@example.test'"
+    with (
+        patch.object(create_dta, "_get_existing_indexes", AsyncMock(return_value=[{"definition": definition}])),
+        patch.object(create_dta, "generate_candidates", AsyncMock(return_value=[])),
+        patch.object(create_dta, "_evaluate_configuration_cost", AsyncMock(return_value=1.0)),
+        patch.object(create_dta, "_enumerate_greedy", AsyncMock(return_value=(set(), 1.0))),
+        caplog.at_level("DEBUG", logger="postgres_mcp.index.dta_calc"),
+    ):
+        create_dta.max_runtime_seconds = 0
+        await create_dta._generate_recommendations([])
+
+    assert "private-index-sentinel@example.test" not in caplog.text
+    assert definition not in caplog.text
+    assert "Existing indexes: 1" in caplog.text
+
+
 class MockCell:
     def __init__(self, data: Dict[str, Any]):
         self.cells = data
@@ -232,7 +250,8 @@ async def test_error_handling(async_sql_driver, create_dta):
     async_sql_driver.execute_query = AsyncMock(side_effect=RuntimeError("HypoPG not available"))
     dta = create_dta
     session = await dta.analyze_workload(min_calls=50, min_avg_time_ms=5.0)
-    assert "HypoPG not available" in session.error
+    assert session.error == "The operation failed."
+    assert "HypoPG not available" not in session.error
 
     # Test invalid query handling
     async_sql_driver.execute_query = AsyncMock(return_value=None)

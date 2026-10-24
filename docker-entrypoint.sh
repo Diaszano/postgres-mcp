@@ -19,24 +19,22 @@ if [[ "$remap" == true ]]; then
 fi
 
 remap_uri() {
-    python - "$1" "$docker_host" <<'PY'
+    remapped_uri=$1
+    [[ -n "$docker_host" ]] || return 0
+    local replacement
+    replacement=$(python - "$1" "$docker_host" <<'PY'
 import sys
 from urllib.parse import urlsplit
 
 uri, docker_host = sys.argv[1:]
-if not docker_host:
-    print(uri)
-    raise SystemExit
 try:
     parsed = urlsplit(uri)
     netloc = parsed.netloc
     host_port = netloc.rsplit("@", 1)[-1]
     host = host_port.partition(":")[0]
     if parsed.scheme not in ("postgres", "postgresql") or host.lower() != "localhost":
-        print(uri)
         raise SystemExit
 except ValueError:
-    print(uri)
     raise SystemExit
 
 scheme_end = uri.find("://") + 3
@@ -44,18 +42,25 @@ authority_end = min((i for i in (uri.find("/", scheme_end), uri.find("?", scheme
 authority = uri[scheme_end:authority_end]
 userinfo_length = authority.rfind("@") + 1
 host_start = scheme_end + userinfo_length
-print(uri[:host_start] + docker_host + uri[host_start + len(host):])
+# The sentinel preserves trailing newlines through Bash command substitution.
+sys.stdout.write(uri[:host_start] + docker_host + uri[host_start + len(host):] + ".")
 PY
+    )
+    if [[ -n "$replacement" ]]; then
+        remapped_uri=${replacement%.}
+    fi
 }
 
 processed_args=("$1")
 shift
 for arg in "$@"; do
-    processed_args+=("$(remap_uri "$arg")")
+    remap_uri "$arg"
+    processed_args+=("$remapped_uri")
 done
 
 if [[ -n "${DATABASE_URI:-}" ]]; then
-    DATABASE_URI=$(remap_uri "$DATABASE_URI")
+    remap_uri "$DATABASE_URI"
+    DATABASE_URI=$remapped_uri
     export DATABASE_URI
 fi
 

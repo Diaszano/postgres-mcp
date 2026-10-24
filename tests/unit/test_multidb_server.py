@@ -347,7 +347,8 @@ async def test_list_databases_error_is_reported_not_raised():
     reg = _InfoRegistry(error=RuntimeError("Database discovery is unavailable"))
     with patch("postgres_mcp.server.database_config", _config(True)), patch("postgres_mcp.server.registry", reg):
         text = (await server.list_databases())[0].text
-    assert text == "Error: Database discovery is unavailable"
+    assert text == "Error: The operation failed."
+    assert "Database discovery is unavailable" not in text
 
 
 @pytest.mark.asyncio
@@ -475,7 +476,8 @@ async def test_startup_degraded_does_not_list_falsely(monkeypatch):
         await server.main()
         assert server.registry is not None
         text = (await server.list_databases())[0].text
-    assert text == "Error: Database discovery is unavailable"
+    assert text == "Error: The database is temporarily unavailable."
+    assert "boom s3cret" not in text
 
 
 # --- Task 12: execute_sql and explain_query routed to the selected database ---
@@ -652,17 +654,17 @@ async def test_health_legacy_positional_order():
 
 
 @pytest.mark.parametrize(
-    "exc",
+    "exc, expected",
     [
-        DatabaseUnavailableError("db gone"),
-        DiscoveryUnavailableError("no discovery"),
-        DatabaseConfigurationError("bad cfg"),
-        PoolCapacityError("full"),
-        ValueError("Database 'x' is not available"),
+        (DatabaseUnavailableError("db gone"), "The database is temporarily unavailable."),
+        (DiscoveryUnavailableError("no discovery"), "The database is temporarily unavailable."),
+        (DatabaseConfigurationError("bad cfg"), "The requested database is not available."),
+        (PoolCapacityError("full"), "The database connection pool is at capacity."),
+        (ValueError("Database 'x' is not available"), "The operation failed."),
     ],
 )
 @pytest.mark.asyncio
-async def test_health_reports_expected_errors_as_error_response(exc):
+async def test_health_reports_expected_errors_as_error_response(exc, expected):
     @asynccontextmanager
     async def boom(database=None):
         raise exc
@@ -670,7 +672,8 @@ async def test_health_reports_expected_errors_as_error_response(exc):
 
     with patch("postgres_mcp.server.get_sql_driver", boom):
         text = (await analyze_db_health("all", "x"))[0].text
-    assert text == f"Error: {exc}"
+    assert text == f"Error: {expected}"
+    assert str(exc) not in text
 
 
 @pytest.mark.asyncio

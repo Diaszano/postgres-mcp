@@ -886,6 +886,9 @@ class SafeSqlDriver(SqlDriver):
         if isinstance(node, A_Expr) and node.name and len(node.name) > 1 and node.name[0].sval != "pg_catalog":
             raise ValueError("Untrusted operator schema is not allowed")
 
+        if isinstance(node, TypeName) and len(node.names) > 1 and tuple(part.sval for part in node.names[:-1]) != ("pg_catalog",):
+            raise ValueError("Untrusted type schema is not allowed")
+
         # Reject SELECT statements with locking clauses
         if isinstance(node, SelectStmt) and getattr(node, "lockingClause", None):
             raise ValueError("Locking clause on select is prohibited")
@@ -1014,7 +1017,7 @@ def validate_restricted_sql(sql: str) -> None:
 
 
 async def validate_restricted_function_resolution(cursor: Any, query: str) -> None:
-    """Reject public function/operator overloads backed by untrusted functions."""
+    """Reject untrusted function/operator overloads and non-catalog type casts."""
     try:
         statements = pglast.parse_sql(query)
     except pglast.parser.ParseError:
@@ -1022,12 +1025,18 @@ async def validate_restricted_function_resolution(cursor: Any, query: str) -> No
         return
     names: set[str] = set()
     operators: set[str] = set()
+    types: set[str] = set()
 
     def visit(value: Any) -> None:
         if isinstance(value, FuncCall) and len(value.funcname) == 1:
             names.add(value.funcname[0].sval)
         if isinstance(value, A_Expr) and value.name and len(value.name) == 1:
             operators.add(value.name[0].sval)
+        if isinstance(value, TypeName):
+            parts = tuple(part.sval for part in value.names)
+            if not parts or (len(parts) > 1 and parts[:-1] != ("pg_catalog",)):
+                raise SQLValidationError("Error validating query: untrusted type resolution")
+            types.add(parts[-1])
         if isinstance(value, Node):
             for attribute in value.__slots__:
                 if not attribute.startswith("_"):
@@ -1037,7 +1046,7 @@ async def validate_restricted_function_resolution(cursor: Any, query: str) -> No
                 visit(item)
 
     visit(statements)
-    if not names and not operators:
+    if not names and not operators and not types:
         return
     await cursor.execute(
         """
@@ -1060,9 +1069,16 @@ async def validate_restricted_function_resolution(cursor: Any, query: str) -> No
                     AND d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass
                     AND d.objid = p.oid AND d.deptype = 'e' AND e.extname = ANY(%s)
               )
+        ) OR EXISTS (
+            SELECT 1 FROM pg_catalog.unnest(%s::pg_catalog.text[]) AS requested(name)
+            WHERE NOT EXISTS (
+                SELECT 1 FROM pg_catalog.pg_type AS t
+                JOIN pg_catalog.pg_namespace AS n ON n.oid = t.typnamespace
+                WHERE n.nspname = 'pg_catalog' AND t.typname = requested.name AND t.typtype <> 'd'
+            )
         ) AS untrusted
         """,
-        (sorted(names), sorted(operators), sorted(SafeSqlDriver.ALLOWED_EXTENSIONS)),
+        (sorted(names), sorted(operators), sorted(SafeSqlDriver.ALLOWED_EXTENSIONS), sorted(types)),
     )
     if (await cursor.fetchone())["untrusted"]:
         raise SQLValidationError("Error validating query: untrusted function resolution")

@@ -3,9 +3,23 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 ENTRYPOINT = ROOT / "docker-entrypoint.sh"
+
+
+@pytest.mark.parametrize("remap", ["false", "true"])
+def test_entrypoint_preserves_unchanged_arguments(tmp_path, remap):
+    args = ["--option=value\n\n", "", "host=localhost dbname=app\n", "postgresql://db.example/app\n"]
+    result, captured = _run_entrypoint(
+        tmp_path,
+        args,
+        env={"DATABASE_URI": "host=localhost dbname=app\n", "DATABASE_DOCKER_REMAP_LOCALHOST": remap},
+        ping_script="#!/bin/sh\nexit 0\n",
+    )
+    assert result.returncode == 0
+    assert captured == {"argv": args, "database_uri": "host=localhost dbname=app\n"}
 
 
 def _run_entrypoint(tmp_path, args, *, env=None, ping_script=None):
@@ -53,9 +67,10 @@ def test_entrypoint_never_logs_database_uri(tmp_path):
     assert captured == {"argv": [uri], "database_uri": uri}
 
 
-def test_entrypoint_remapping_is_opt_in(tmp_path):
-    uri = "postgresql://user%40localhost:p%3Ass@localhost:5432/app?application_name=localhost"
-    ping = "#!/bin/sh\ncase \"$*\" in *host.docker.internal*) exit 0;; *) exit 1;; esac\n"
+@pytest.mark.parametrize("suffix", ["", "\n\n"])
+def test_entrypoint_remapping_is_opt_in(tmp_path, suffix):
+    uri = "postgresql://user%40localhost:p%3Ass@localhost:5432/app?application_name=localhost" + suffix
+    ping = '#!/bin/sh\ncase "$*" in *host.docker.internal*) exit 0;; *) exit 1;; esac\n'
 
     default_dir = tmp_path / "default"
     default_dir.mkdir()

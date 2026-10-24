@@ -103,6 +103,51 @@ async def test_legacy_select_still_works(restricted_database):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT 'x'::public.restricted_domain",
+        "SELECT 'x'::restricted_domain",
+        "SELECT CAST('x' AS restricted_domain)",
+        "SELECT '{x}'::restricted_domain[]",
+    ],
+)
+async def test_restricted_rejects_domain_cast_without_side_effects(restricted_database, query):
+    pg, database = restricted_database
+    with pg.admin(database) as admin:
+        admin.execute(
+            """
+            CREATE FUNCTION public.restricted_domain_check(text) RETURNS boolean LANGUAGE plpgsql AS $$
+            BEGIN
+                PERFORM pg_catalog.pg_advisory_lock(6413403, 4);
+                RETURN true;
+            END
+            $$
+            """
+        )
+        admin.execute("CREATE DOMAIN public.restricted_domain AS text CHECK (public.restricted_domain_check(VALUE))")
+        try:
+            admin.execute("BEGIN READ ONLY")
+            assert admin.execute(query).fetchone()[0] is not None
+            admin.execute("ROLLBACK")
+            with pg.admin(database) as observer:
+                assert observer.execute("SELECT pg_catalog.pg_try_advisory_lock(6413403, 4)").fetchone()[0] is False
+            admin.execute("SELECT pg_catalog.pg_advisory_unlock_all()")
+            async with await psycopg.AsyncConnection.connect(pg.uri(pg.mcp_role, database), autocommit=True) as connection:
+                safe = SafeSqlDriver(SqlDriver(conn=connection))
+                with pytest.raises(SQLValidationError):
+                    await safe.execute_query(query)
+                with pg.admin(database) as observer:
+                    assert observer.execute("SELECT pg_catalog.pg_try_advisory_lock(6413403, 4)").fetchone()[0] is True
+                safe = SafeSqlDriver(SqlDriver(conn=connection))
+                rows = await safe.execute_query("SELECT id::pg_catalog.text AS value FROM public.restricted_marker")
+                assert rows[0].cells == {"value": "1"}
+        finally:
+            admin.execute("DROP DOMAIN public.restricted_domain")
+            admin.execute("DROP FUNCTION public.restricted_domain_check(text)")
+
+
+@pytest.mark.asyncio
 async def test_restricted_allows_verified_extension_function(restricted_database):
     pg, database = restricted_database
     with pg.admin(database) as admin:

@@ -280,7 +280,6 @@ Para o Windsurf, o formato em `mcp_config.json` é um pouco diferente:
 }
 ```
 
-<a id="multiple-databases-optional"></a>
 ## Implantação HTTP autenticada
 
 **Migração:** SSE e Streamable HTTP continuam usando `localhost` por padrão. Endereços fora de loopback, incluindo `0.0.0.0`, `::`, IPs privados e nomes diferentes de `localhost`, agora são rejeitados antes das conexões ao banco e da inicialização HTTP, a menos que as três variáveis abaixo sejam válidas. Stdio ignora a configuração HTTP e não exige credenciais HTTP. `DATABASE_URI`, modos de acesso e parâmetros das ferramentas permanecem iguais.
@@ -306,6 +305,7 @@ O proxy deve preservar Authorization, o Host público e qualquer cabeçalho Orig
 
 O caminho de autenticação, identidade e Host/Origin é exercitado com o SDK MCP 1.25.0 nos testes focados de transporte. Terminação TLS, isolamento do proxy e limites de tráfego são responsabilidades da implantação; este repositório não instala nem verifica uma implantação de proxy.
 
+<a id="multiple-databases-optional"></a>
 ## Múltiplos bancos de dados (opcional)
 
 Por padrão, o Postgres MCP Pro conversa com o único banco de dados indicado em `DATABASE_URI`, exatamente como antes.
