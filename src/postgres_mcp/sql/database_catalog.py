@@ -8,6 +8,7 @@ from collections.abc import Callable
 from psycopg import AsyncConnection
 
 from postgres_mcp.database_config import DatabaseConfig
+from postgres_mcp.security.errors import DatabaseNotAllowedError
 
 _DISCOVERY_SQL = """
 SELECT datname
@@ -119,5 +120,5 @@ class DatabaseCatalog:
         if requested not in names and self._generation == generation:
             names, _ = await self.names(refresh=True)
         if requested not in names:
-            raise ValueError(f"Database {requested!r} is not available")
+            raise DatabaseNotAllowedError("The requested database is not available.")
         return requested

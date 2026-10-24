@@ -6,6 +6,8 @@ from unittest.mock import patch
 import pytest
 
 from postgres_mcp.database_config import DatabaseConfig
+from postgres_mcp.security.errors import DatabaseNotAllowedError
+from postgres_mcp.security.errors import to_public_error
 from postgres_mcp.sql import database_catalog
 from postgres_mcp.sql.database_catalog import DatabaseCatalog
 from postgres_mcp.sql.database_catalog import DatabaseConfigurationError
@@ -103,9 +105,26 @@ async def test_unknown_and_denied_rejected_before_pool():
         with pytest.raises(ValueError) as exc:
             await catalog.authorize(bad)
         message = str(exc.value)
-        assert bad in message
+        assert bad not in message
+        assert "not available" in message
         assert "s3cret" not in message
         assert "localhost" not in message
+
+
+@pytest.mark.asyncio
+async def test_discovery_denial_maps_to_database_not_allowed():
+    catalog = DatabaseCatalog(
+        make_config(excluded_databases=("secret_db",)),
+        discover=AsyncMock(return_value={"App_Test", "secret_db"}),
+        clock=fake_clock,
+    )
+
+    with pytest.raises(DatabaseNotAllowedError) as exc:
+        await catalog.authorize("secret_db")
+
+    public_error = to_public_error(exc.value)
+    assert public_error.code == "DATABASE_NOT_ALLOWED"
+    assert "secret_db" not in str(public_error)
 
 
 @pytest.mark.asyncio

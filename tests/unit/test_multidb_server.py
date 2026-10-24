@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from postgres_mcp.database_config import parse_database_config
+from postgres_mcp.security.errors import DatabaseNotAllowedError
 from postgres_mcp.server import AccessMode
 from postgres_mcp.server import get_object_details
 from postgres_mcp.server import get_sql_driver
@@ -157,7 +158,8 @@ async def test_legacy_rejects_database_other_than_bootstrap(access_mode):
             async with get_sql_driver("app_testing"):
                 pytest.fail("legacy mode must not open another database")
     message = str(excinfo.value)
-    assert "'app_testing'" in message
+    assert "DATABASE_AUTO_DISCOVER=true" in message
+    assert "app_testing" not in message
     assert "app_main" not in message and "s3cret" not in message and "db.internal" not in message
     assert registry.requested == []
 
@@ -185,9 +187,10 @@ async def test_legacy_without_known_bootstrap_rejects_any_explicit_database():
         patch("postgres_mcp.server.database_config", None),
         patch("postgres_mcp.server.registry", None),
     ):
-        with pytest.raises(ValueError, match="'postgres'"):
+        with pytest.raises(DatabaseNotAllowedError) as exc:
             async with get_sql_driver("postgres"):
                 pass
+        assert "postgres" not in str(exc.value)
 
 
 # --- Task 11: schema tools routed to the selected database ---
@@ -266,7 +269,7 @@ async def test_denied_database_never_queries(discovery, call):
         @asynccontextmanager
         async def acquire(self, database=None):
             if database == "secret_db":
-                raise ValueError("Database 'secret_db' is not available")
+                raise DatabaseNotAllowedError("Database 'secret_db' is not available")
             async with super().acquire(database) as pool:
                 yield pool
 
@@ -274,7 +277,8 @@ async def test_denied_database_never_queries(discovery, call):
     execute = AsyncMock()
     with patch("postgres_mcp.server.registry", denying), patch.object(SqlDriver, "_execute_with_connection", execute):
         text = (await call("secret_db"))[0].text
-    assert text == "Error: Database 'secret_db' is not available"
+    assert text == "Error: The requested database is not available."
+    assert "secret_db" not in text
     execute.assert_not_called()
     assert denying.pools == {}
 
@@ -289,7 +293,8 @@ async def test_legacy_denied_database_never_queries_via_tools(call):
         patch.object(SqlDriver, "_execute_with_connection", execute),
     ):
         text = (await call("app_testing"))[0].text
-    assert text.startswith("Error: ") and "'app_testing'" in text
+    assert text == "Error: The requested database is not available."
+    assert "app_testing" not in text
     execute.assert_not_called()
 
 
