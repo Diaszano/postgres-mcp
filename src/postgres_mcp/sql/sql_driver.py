@@ -17,6 +17,8 @@ from psycopg_pool import AsyncConnectionPool
 from typing_extensions import LiteralString
 
 from ..query_limits.admission import remaining_query_seconds
+from ..query_limits.results import BoundedQueryResult
+from ..query_limits.results import read_bounded_result
 from ..security.errors import log_public_error
 
 logger = logging.getLogger(__name__)
@@ -243,7 +245,45 @@ class SqlDriver:
 
             raise e
 
-    async def _execute_with_connection(self, connection, query, params, force_readonly) -> Optional[List[RowResult]]:
+    async def execute_bounded_query(
+        self,
+        query: LiteralString,
+        *,
+        max_rows: int,
+        max_result_bytes: int,
+        timeout_seconds: int,
+        safe_row_yielding: bool = False,
+    ) -> BoundedQueryResult:
+        """Execute one validated read query and collect a bounded result."""
+        from pglast.parser import parse_sql
+
+        if len(parse_sql(query)) != 1:
+            raise ValueError("Bounded queries must contain exactly one SQL statement")
+        if self.conn is None:
+            self.connect()
+        if self.conn is None:
+            raise ValueError("Connection not established")
+        if self.is_pool:
+            pool = await self.conn.pool_connect()
+            async with pool.connection() as connection:
+                return await self._execute_with_connection(
+                    connection,
+                    query,
+                    None,
+                    force_readonly=True,
+                    result_limits=(max_rows, max_result_bytes, timeout_seconds, safe_row_yielding),
+                )
+        return await self._execute_with_connection(
+            self.conn,
+            query,
+            None,
+            force_readonly=True,
+            result_limits=(max_rows, max_result_bytes, timeout_seconds, safe_row_yielding),
+        )
+
+    async def _execute_with_connection(
+        self, connection, query, params, force_readonly, result_limits=None
+    ) -> Optional[List[RowResult]] | BoundedQueryResult:
         """Execute query with the given connection."""
         transaction_started = False
         try:
@@ -275,9 +315,10 @@ class SqlDriver:
                 else:
                     await cursor.execute(query)
 
-                # For multiple statements, move to the last statement's results
-                while cursor.nextset():
-                    pass
+                if result_limits is None:
+                    # Preserve legacy multi-statement behavior for existing callers.
+                    while cursor.nextset():
+                        pass
 
                 if cursor.description is None:  # No results (like DDL statements)
                     if not force_readonly:
@@ -286,6 +327,20 @@ class SqlDriver:
                         await cursor.execute("ROLLBACK")
                         transaction_started = False
                     return None
+
+                if result_limits is not None:
+                    max_rows, max_result_bytes, timeout_seconds, safe_row_yielding = result_limits
+                    result = await read_bounded_result(
+                        cursor,
+                        max_rows=max_rows,
+                        max_result_bytes=max_result_bytes,
+                        timeout_seconds=timeout_seconds,
+                        safe_row_yielding=safe_row_yielding,
+                    )
+                    if transaction_started:
+                        await cursor.execute("ROLLBACK")
+                        transaction_started = False
+                    return result
 
                 # Get results from the last statement only
                 rows = await cursor.fetchall()
