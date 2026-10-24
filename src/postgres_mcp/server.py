@@ -41,6 +41,8 @@ from .security.errors import to_public_error
 from .security.transport import HttpAuthConfig
 from .security.transport import run_authenticated_http
 from .security.transport import validate_http_deployment
+from .query_limits.config import QueryBudgetConfig
+from .query_limits.config import parse_query_budget_config
 from .sql import DbConnPool
 from .sql import SafeSqlDriver
 from .sql import SqlDriver
@@ -63,6 +65,11 @@ HYPOPG_EXTENSION = "hypopg"
 ResponseType = List[types.TextContent | types.ImageContent | types.EmbeddedResource]
 
 logger = logging.getLogger(__name__)
+
+
+def warn_if_query_guardrails_disabled(transport: str, config: QueryBudgetConfig) -> None:
+    if transport != "stdio" and not config.enabled:
+        logger.warning("Query guardrails are disabled for remote transport; SQL execution is unbounded.")
 
 
 class AccessMode(str, Enum):
@@ -699,6 +706,11 @@ async def main():
     global current_access_mode, database_config, registry
     # Configuration errors (including a default database denied by the filters) propagate: never masked.
     database_config = parse_database_config(os.environ, args.database_url, args.access_mode)
+    try:
+        query_budget_config = parse_query_budget_config(os.environ)
+    except ValueError as exc:
+        parser.error(str(exc))
+    warn_if_query_guardrails_disabled(args.transport, query_budget_config)
     current_access_mode = AccessMode(database_config.access_mode)
     if database_config.auto_discover and args.access_mode == AccessMode.UNRESTRICTED.value:
         logger.warning(

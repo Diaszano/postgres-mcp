@@ -347,10 +347,17 @@ uvx postgres-mcp
 | `DATABASE_MAX_POOLS` | `4` | Número máximo de pools de bancos de dados abertos ao mesmo tempo. |
 | `DATABASE_POOL_MAX_SIZE` | `2` | Número máximo de conexões por pool de banco de dados. |
 | `DATABASE_POOL_IDLE_SECONDS` | `600` | Tempo ocioso após o qual um pool sem uso pode ser fechado. |
+| `DATABASE_QUERY_GUARDRAILS_ENABLED` | `false` | Habilita limites para consultas SQL. Transportes remotos exibem um aviso na inicialização enquanto estiver desabilitado. |
+| `DATABASE_QUERY_DEFAULT_MAX_ROWS` | `200` | Número padrão máximo de linhas retornadas por uma consulta. |
+| `DATABASE_QUERY_HARD_MAX_ROWS` | `5000` | Limite máximo de linhas que uma chamada da ferramenta pode solicitar. |
+| `DATABASE_QUERY_DEFAULT_TIMEOUT_SECONDS` | `15` | Tempo limite padrão da consulta, em segundos. |
+| `DATABASE_QUERY_HARD_TIMEOUT_SECONDS` | `60` | Tempo limite máximo que uma chamada da ferramenta pode solicitar. |
+| `DATABASE_QUERY_MAX_RESULT_BYTES` | `2097152` | Tamanho máximo do resultado serializado, em bytes; valor máximo configurável de 64 MiB. |
+| `DATABASE_QUERY_MAX_CONCURRENCY` | `4` | Número máximo de execuções SQL simultâneas com limites; valor máximo configurável de 256. |
 
 Ambas as variáveis de lista aceitam uma lista separada por vírgulas (`app,testing`; espaços ao redor dos nomes são removidos) ou, quando o valor começa com `[`, um array JSON de strings (`["app", "name,with,comma"]`).
 Use a forma JSON para nomes que contenham vírgulas. Os nomes nunca são convertidos para minúsculas nem normalizados de outra forma.
-As variáveis numéricas devem ser inteiros maiores ou iguais a 1; valores inválidos interrompem o servidor na inicialização com um erro que nunca inclui a URI nem a senha.
+As variáveis numéricas devem ser inteiros maiores ou iguais a 1; valores inválidos interrompem o servidor na inicialização com um erro que nunca inclui a URI nem a senha. As configurações de limites de consulta também exigem inteiros positivos; os valores padrão de linhas e tempo limite não podem exceder seus limites máximos. O limite de linhas é 10.000.000 e o de tempo limite é 3.600 segundos. Os limites ficam desabilitados por padrão durante a migração.
 
 **O que é descobrível.** Um banco de dados só é listado se não for um template, aceitar conexões, a role tiver `CONNECT` nele e passar pelas listas de permissão e de bloqueio.
 O banco de dados em `DATABASE_URI` é apenas a conexão de bootstrap: ele não é especial.
