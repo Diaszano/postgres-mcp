@@ -4,6 +4,7 @@ import logging
 import os
 import secrets
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Generator
 
@@ -91,6 +92,25 @@ def multidb_postgres() -> Generator[MultiDbPostgres, None, None]:
     except docker_errors.ImageNotFound:
         image = FALLBACK_IMAGE
         logger.warning("Image %s not found locally; using %s (hypopg unavailable)", IMAGE, image)
+    with _multidb_container(client, image) as pg:
+        yield pg
+
+
+@pytest.fixture(scope="session")
+def hypopg_postgres() -> Generator[MultiDbPostgres, None, None]:
+    """Require the HypoPG image and extension; setup errors never become skips."""
+    client = docker.from_env()
+    client.ping()
+    client.images.get(IMAGE)
+    with _multidb_container(client, IMAGE) as pg:
+        with pg.admin("app_development") as conn:
+            conn.execute("CREATE EXTENSION IF NOT EXISTS hypopg")
+            conn.execute(sql.SQL("GRANT SELECT ON hypopg_list_indexes TO {}").format(sql.Identifier(MCP_ROLE)))
+        yield pg
+
+
+@contextmanager
+def _multidb_container(client: docker.DockerClient, image: str) -> Generator[MultiDbPostgres, None, None]:
     admin_password = secrets.token_urlsafe(24)
     container = client.containers.run(
         image,
