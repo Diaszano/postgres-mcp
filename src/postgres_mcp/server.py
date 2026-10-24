@@ -25,6 +25,7 @@ from pydantic import validate_call
 
 from postgres_mcp.index.dta_calc import DatabaseTuningAdvisor
 
+from .application.query_service import QueryExecutionService
 from .artifacts import ErrorResult
 from .artifacts import ExplainPlanArtifact
 from .database_config import DatabaseConfig
@@ -35,10 +36,13 @@ from .explain import ExplainPlanTool
 from .index.index_opt_base import MAX_NUM_INDEX_TUNING_QUERIES
 from .index.llm_opt import LLMOptimizerTool
 from .index.presentation import TextPresentation
+from .query_limits.admission import QueryAdmission
 from .query_limits.config import QueryBudgetConfig
 from .query_limits.config import parse_query_budget_config
 from .query_limits.policy import resolve_query_limits
+from .query_limits.results import encode_bounded_result
 from .security.errors import DatabaseNotAllowedError
+from .security.errors import PublicToolError
 from .security.errors import log_public_error
 from .security.errors import to_public_error
 from .security.transport import HttpAuthConfig
@@ -85,6 +89,7 @@ db_connection = DbConnPool()
 current_access_mode = AccessMode.UNRESTRICTED
 shutdown_in_progress = False
 query_budget_config = QueryBudgetConfig()
+query_admission = QueryAdmission(query_budget_config.max_concurrency)
 database_config: DatabaseConfig | None = None  # None until startup parses it: legacy mode
 registry: DatabaseRegistry | None = None  # used only when database_config.auto_discover
 
@@ -507,10 +512,23 @@ async def execute_sql(
     database: Annotated[str | None, Field(description="Database to use; omit for the default database")] = None,
     max_rows: Annotated[int | None, Field(strict=True)] = None,
     timeout_seconds: Annotated[int | None, Field(strict=True)] = None,
+    page_size: Annotated[int | None, Field(strict=True)] = None,
+    pagination: str = "none",
 ) -> ResponseType:
     """Executes a SQL query against the database."""
     try:
-        resolve_query_limits(query_budget_config, max_rows, timeout_seconds)
+        limits = resolve_query_limits(query_budget_config, max_rows, timeout_seconds)
+        if page_size is not None or pagination != "none":
+            raise PublicToolError("INVALID_QUERY_OPTIONS", "Query pagination is not available; omit page_size and use pagination='none'.")
+        if query_budget_config.enabled:
+            service = QueryExecutionService(get_sql_driver, query_budget_config.max_result_bytes)
+
+            async def execute_guarded() -> ResponseType:
+                result = await service.execute(sql, database, limits)
+                encoded = encode_bounded_result(result, query_budget_config.max_result_bytes)
+                return format_text_response(encoded.decode("utf-8"))
+
+            return await query_admission.run(execute_guarded, limits.timeout_seconds)
         async with get_sql_driver(database) as sql_driver:
             rows = await sql_driver.execute_query(sql)  # type: ignore
             if rows is None:
@@ -708,13 +726,14 @@ async def main():
         except ValueError as exc:
             parser.error(str(exc))
 
-    global current_access_mode, database_config, registry, query_budget_config
+    global current_access_mode, database_config, registry, query_budget_config, query_admission
     # Configuration errors (including a default database denied by the filters) propagate: never masked.
     database_config = parse_database_config(os.environ, args.database_url, args.access_mode)
     try:
         query_budget_config = parse_query_budget_config(os.environ)
     except ValueError as exc:
         parser.error(str(exc))
+    query_admission = QueryAdmission(query_budget_config.max_concurrency)
     warn_if_query_guardrails_disabled(args.transport, query_budget_config)
     current_access_mode = AccessMode(database_config.access_mode)
     if database_config.auto_discover and args.access_mode == AccessMode.UNRESTRICTED.value:

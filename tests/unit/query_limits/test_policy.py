@@ -1,3 +1,4 @@
+import json
 from contextlib import asynccontextmanager
 from unittest.mock import patch
 
@@ -5,6 +6,7 @@ import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
 from postgres_mcp.query_limits.config import QueryBudgetConfig
+from postgres_mcp.query_limits.results import BoundedQueryResult
 from postgres_mcp.security.errors import PublicToolError
 from postgres_mcp.server import execute_sql
 
@@ -43,8 +45,8 @@ async def test_registered_tool_rejects_coercive_budget_inputs(monkeypatch):
     calls = []
 
     class Driver:
-        async def execute_query(self, sql):
-            return []
+        async def execute_bounded_query(self, sql, **limits):
+            return BoundedQueryResult([], 0, False, None, 0, limits["timeout_seconds"])
 
     @asynccontextmanager
     async def fake_get_sql_driver(database=None):
@@ -61,8 +63,9 @@ async def test_registered_tool_rejects_coercive_budget_inputs(monkeypatch):
             with pytest.raises(ToolError):
                 await manager.call_tool(name, {"sql": "SELECT 1", "max_rows": value})
         assert calls == []
-        await manager.call_tool(name, {"sql": "SELECT 1", "max_rows": 100})
-        await manager.call_tool(name, {"sql": "SELECT 1", "max_rows": None})
+        for value in (100, None):
+            response = await manager.call_tool(name, {"sql": "SELECT 1", "max_rows": value})
+            assert json.loads(response[0].text)["rows"] == []
         assert calls == [None, None]
     finally:
         manager.remove_tool(name)
