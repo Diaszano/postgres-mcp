@@ -300,7 +300,8 @@ async def test_explain_with_error(mock_sql_driver):
 
     # Verify error handling
     assert isinstance(result, ErrorResult)
-    assert "Database error" in result.value
+    assert result.value == "The operation failed."
+    assert "Database error" not in result.value
 
 
 @pytest.mark.asyncio

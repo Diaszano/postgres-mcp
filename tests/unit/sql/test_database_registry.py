@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from postgres_mcp.database_config import DatabaseConfig
+from postgres_mcp.security.errors import DatabaseNotAllowedError
 from postgres_mcp.sql import DatabaseInfo
 from postgres_mcp.sql import DatabaseRegistry
 from postgres_mcp.sql import DatabaseUnavailableError
@@ -387,9 +388,10 @@ async def test_refresh_revocation_blocks_new_lease(already_open):
             ]
         )
 
-        with pytest.raises(ValueError, match="Database 'app_development' is not available"):
+        with pytest.raises(DatabaseNotAllowedError, match=r"^The requested database is not available\.$") as error:
             async with h.registry.acquire("app_development"):
                 pass
+        assert "app_development" not in str(error.value)
 
         assert h.registry.active_leases("app_development") == int(already_open)
         assert h.calls["app_development"] == int(already_open)
@@ -407,9 +409,10 @@ async def test_refresh_revocation_closes_idle_pool():
         ]
     )
 
-    with pytest.raises(ValueError, match="Database 'app_development' is not available"):
+    with pytest.raises(DatabaseNotAllowedError, match=r"^The requested database is not available\.$") as error:
         async with h.registry.acquire("app_development"):
             pass
+    assert "app_development" not in str(error.value)
 
     await settle()
     assert pool.closed

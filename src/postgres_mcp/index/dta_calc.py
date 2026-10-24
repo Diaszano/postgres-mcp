@@ -17,7 +17,6 @@ from ..sql import TableAliasVisitor
 from .index_opt_base import IndexRecommendation
 from .index_opt_base import IndexTuningBase
 from .index_opt_base import candidate_str
-from .index_opt_base import pp_list
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +71,7 @@ class DatabaseTuningAdvisor(IndexTuningBase):
         # Get existing indexes
         existing_index_defs: set[str] = {idx["definition"] for idx in await self._get_existing_indexes()}
 
-        logger.debug(f"Existing indexes ({len(existing_index_defs)}): {pp_list(list(existing_index_defs))}")
+        logger.debug("Existing indexes: %d", len(existing_index_defs))
 
         # generate initial candidates
         all_candidates = await self.generate_candidates(query_weights, existing_index_defs)

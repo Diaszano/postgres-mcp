@@ -29,7 +29,16 @@ async def test_restricted_rejects_write_ast_and_data_modifying_ctes(query):
     driver.execute_query.assert_not_awaited()
 
 
-@pytest.mark.parametrize("query", ["SELECT public.lower('x')", """SELECT "PG_CATALOG".lower('x')""", "SELECT 1 OPERATOR(public.+) 2"])
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT public.lower('x')",
+        """SELECT "PG_CATALOG".lower('x')""",
+        "SELECT 1 OPERATOR(public.+) 2",
+        "SELECT 'x'::public.restricted_domain",
+        """SELECT 'x'::"PG_CATALOG".text""",
+    ],
+)
 def test_restricted_rejects_explicit_untrusted_resolution(query):
     with pytest.raises(SQLValidationError):
         SafeSqlDriver(Mock()).validate(query)
