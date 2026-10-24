@@ -31,7 +31,13 @@ def _json_default(value: Any) -> Any:
 
 def encode_bounded_result(result: BoundedQueryResult, max_result_bytes: int) -> bytes:
     try:
-        encoded = json.dumps(result.__dict__, ensure_ascii=False, separators=(",", ":"), default=_json_default).encode("utf-8")
+        encoded = json.dumps(
+            result.__dict__,
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+            default=_json_default,
+        ).encode("utf-8")
     except (TypeError, ValueError) as exc:
         raise PublicToolError("RESULT_TOO_LARGE", "The query result could not be encoded within the response limit.") from exc
     if len(encoded) > max_result_bytes:
@@ -45,7 +51,7 @@ async def read_bounded_result(
     max_rows: int,
     max_result_bytes: int,
     timeout_seconds: int,
-    safe_row_yielding: bool = True,
+    safe_row_yielding: bool = False,
     chunk_size: int = 100,
 ) -> BoundedQueryResult:
     started = time.monotonic()
@@ -100,7 +106,7 @@ async def read_bounded_result(
             encode_bounded_result(result, max_result_bytes)
             return result
         except PublicToolError:
-            if not result.rows:
+            if len(result.rows) <= 1:
                 raise
             result.rows.pop()
             result.returned_rows = len(result.rows)
