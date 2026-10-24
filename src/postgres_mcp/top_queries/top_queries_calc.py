@@ -5,6 +5,8 @@ from typing import LiteralString
 from typing import Union
 from typing import cast
 
+from ..security.errors import log_public_error
+from ..security.errors import to_public_error
 from ..sql import SafeSqlDriver
 from ..sql import SqlDriver
 from ..sql.extension_utils import check_extension
@@ -132,7 +134,6 @@ class TopQueriesCalc:
                 LIMIT {{}};
             """,
             )
-            logger.debug(f"Executing query: {query}")
             slow_query_rows = await SafeSqlDriver.execute_param_query(
                 self.sql_driver,
                 query,
@@ -151,8 +152,8 @@ class TopQueriesCalc:
             result += str(slow_queries)
             return result
         except Exception as e:
-            logger.error(f"Error getting slow queries: {e}", exc_info=True)
-            return f"Error getting slow queries: {e}"
+            log_public_error(logger, "get_top_queries_by_time", e)
+            return to_public_error(e).message
 
     async def get_top_resource_queries(self, frac_threshold: float = 0.05) -> str:
         """Reports the most time consuming queries based on a resource blend.
@@ -237,7 +238,6 @@ class TopQueriesCalc:
             """,
             )
 
-            logger.debug(f"Executing query: {query}")
             slow_query_rows = await SafeSqlDriver.execute_param_query(
                 self.sql_driver,
                 query,
@@ -247,5 +247,5 @@ class TopQueriesCalc:
 
             return str(resource_queries)
         except Exception as e:
-            logger.error(f"Error getting resource-intensive queries: {e}", exc_info=True)
-            return f"Error resource-intensive queries: {e}"
+            log_public_error(logger, "get_top_resource_queries", e)
+            return to_public_error(e).message

@@ -15,6 +15,8 @@ from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 from typing_extensions import LiteralString
 
+from ..security.errors import log_public_error
+
 logger = logging.getLogger(__name__)
 
 
@@ -140,7 +142,7 @@ class DbConnPool:
                 # Close the pool
                 await self.pool.close()
             except Exception as e:
-                logger.warning(f"Error closing connection pool: {e}")
+                log_public_error(logger, "close_connection_pool", e, level=logging.WARNING)
             finally:
                 self.pool = None
                 self._is_valid = False
@@ -284,7 +286,7 @@ class SqlDriver:
                 try:
                     await connection.rollback()
                 except Exception as rollback_error:
-                    logger.error(f"Error rolling back transaction: {rollback_error}")
+                    log_public_error(logger, "rollback_transaction", rollback_error)
 
-            logger.error(f"Error executing query ({query}): {e}")
+            log_public_error(logger, "execute_query", e)
             raise e

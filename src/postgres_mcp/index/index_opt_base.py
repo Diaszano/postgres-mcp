@@ -13,6 +13,8 @@ from pglast.ast import SelectStmt
 
 from ..artifacts import calculate_improvement_multiple
 from ..explain import ExplainPlanTool
+from ..security.errors import log_public_error
+from ..security.errors import to_public_error
 from ..sql import IndexDefinition
 from ..sql import SafeSqlDriver
 from ..sql import SqlBindParams
@@ -275,7 +277,7 @@ class IndexTuningBase(ABC):
                 # Gather queries as strings
                 workload_queries = [q for q, _, _ in query_weights]
 
-                self.dta_trace(f"Workload queries ({len(workload_queries)}): {pp_list(workload_queries)}")
+                self.dta_trace(f"Workload query count: {len(workload_queries)}")
 
                 # Generate and evaluate index recommendations
                 recommendations: tuple[set[IndexRecommendation], float] = await self._generate_recommendations(query_weights)
@@ -285,8 +287,8 @@ class IndexTuningBase(ABC):
                 await self.sql_driver.execute_query("SELECT hypopg_reset();")
 
         except Exception as e:
-            logger.error(f"Error in workload analysis: {e}", exc_info=True)
-            session.error = f"Error in workload analysis: {e}"
+            log_public_error(logger, "analyze_workload", e)
+            session.error = to_public_error(e).message
 
         session.dta_traces = self._dta_traces
         return session
@@ -340,11 +342,11 @@ class IndexTuningBase(ABC):
 
             parsed = parse_sql(query_text)
             if not parsed:
-                logger.debug(f"Skipping non-parseable query: {query_text[:50]}...")
+                logger.debug("Skipping non-parseable workload query")
                 continue
             stmt = parsed[0].stmt
             if not self._is_analyzable_stmt(stmt):
-                logger.debug(f"Skipping non-analyzable query: {query_text[:50]}...")
+                logger.debug("Skipping non-analyzable workload query")
                 continue
 
             q["query"] = query_text
@@ -487,7 +489,7 @@ class IndexTuningBase(ABC):
                     total_cost += cost * weight
                     valid_queries += 1
                 except Exception as e:
-                    raise ValueError(f"Error executing explain for query: {query_text}") from e
+                    raise ValueError("Error executing explain for workload query") from e
 
             if valid_queries == 0:
                 self.dta_trace("    + no valid queries found for cost evaluation")
@@ -499,7 +501,7 @@ class IndexTuningBase(ABC):
             return avg_cost
 
         except Exception as e:
-            self.dta_trace(f"    + error evaluating configuration: {e}")
+            self.dta_trace(f"    + error evaluating configuration: {to_public_error(e).message}")
             raise ValueError("Error evaluating configuration") from e
 
     async def _estimate_index_size(self, table: str, columns: list[str]) -> int:
@@ -645,7 +647,7 @@ class IndexTuningBase(ABC):
                 self._table_size_cache[table] = size
                 return size
         except Exception as e:
-            logger.warning(f"Error getting table size for {table}: {e}")
+            log_public_error(logger, "get_table_size", e, level=logging.WARNING)
             # Use estimation method
             size = await self._estimate_table_size(table)
             self._table_size_cache[table] = size
@@ -661,7 +663,7 @@ class IndexTuningBase(ABC):
                 # Rough estimate: assume 1KB per row
                 return row_count * 1024
         except Exception as e:
-            logger.warning(f"Error estimating table size for {table}: {e}")
+            log_public_error(logger, "estimate_table_size", e, level=logging.WARNING)
 
         # Default size if we can't estimate
         return 10 * 1024 * 1024  # 10MB default

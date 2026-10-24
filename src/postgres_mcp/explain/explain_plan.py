@@ -9,6 +9,8 @@ from typing import Any
 
 from ..artifacts import ErrorResult
 from ..artifacts import ExplainPlanArtifact
+from ..security.errors import log_public_error
+from ..security.errors import to_public_error
 from ..sql import IndexDefinition
 from ..sql import SafeSqlDriver
 from ..sql import SqlBindParams
@@ -47,8 +49,6 @@ class ExplainPlanTool:
                     logger.debug("LIKE expressions detected, using parameter replacement instead of GENERIC_PLAN")
                 bind_params = SqlBindParams(self.sql_driver)
                 modified_query = await bind_params.replace_parameters(sql_query)
-                logger.debug(f"Original query: {sql_query}")
-                logger.debug(f"Modified query: {modified_query}")
                 sql_query = modified_query
             else:
                 use_generic_plan = True
@@ -109,8 +109,8 @@ class ExplainPlanTool:
                     # Try to convert to list if it's not already
                     try:
                         idx["columns"] = list(idx["columns"]) if hasattr(idx["columns"], "__iter__") else [idx["columns"]]
-                    except Exception as e:
-                        return ErrorResult(f"Expected list for 'columns', got {type(idx['columns'])}: {e}")
+                    except Exception:
+                        return ErrorResult(f"Expected list for 'columns', got {type(idx['columns'])}")
 
             # Convert the index definitions to IndexConfig objects
             indexes = frozenset(
@@ -136,11 +136,12 @@ class ExplainPlanTool:
                 # Convert the plan data to an ExplainPlanArtifact
                 return ExplainPlanArtifact.from_json_data(plan_data)
             except Exception as e:
-                return ErrorResult(f"Error converting explain plan: {e}")
+                log_public_error(logger, "convert_explain_plan", e)
+                return ErrorResult(to_public_error(e).message)
 
         except Exception as e:
-            logger.error(f"Error in explain_with_hypothetical_indexes: {e}", exc_info=True)
-            return ErrorResult(f"Error generating explain plan with hypothetical indexes: {e}")
+            log_public_error(logger, "explain_with_hypothetical_indexes", e)
+            return ErrorResult(to_public_error(e).message)
 
     def _has_bind_variables(self, query: str) -> bool:
         """Check if a query contains bind variables ($1, $2, etc)."""
@@ -159,7 +160,6 @@ class ExplainPlanTool:
                 explain_options.append("GENERIC_PLAN")
 
             explain_q = f"EXPLAIN ({', '.join(explain_options)}) {query}"
-            logger.debug(f"RUNNING EXPLAIN QUERY: {explain_q}")
             rows = await self.sql_driver.execute_query(explain_q)  # type: ignore
             if rows is None:
                 return ErrorResult("No results returned from EXPLAIN")
@@ -178,9 +178,11 @@ class ExplainPlanTool:
             try:
                 return ExplainPlanArtifact.from_json_data(plan_dict)
             except Exception as e:
-                return ErrorResult(f"Internal error converting explain plan - do not retry: {e}")
+                log_public_error(logger, "convert_explain_result", e)
+                return ErrorResult(to_public_error(e).message)
         except Exception as e:
-            return ErrorResult(f"Error executing explain plan: {e}")
+            log_public_error(logger, "execute_explain_plan", e)
+            return ErrorResult(to_public_error(e).message)
 
     async def generate_explain_plan_with_hypothetical_indexes(
         self,
@@ -234,8 +236,5 @@ class ExplainPlanTool:
             return {"Plan": {"Total Cost": float("inf")}}
 
         except Exception as e:
-            logger.error(
-                f"Error getting explain plan for query: {query_text} with error: {e}",
-                exc_info=True,
-            )
+            log_public_error(logger, "generate_explain_plan_with_indexes", e)
             raise e
