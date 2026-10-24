@@ -56,7 +56,7 @@ async def test_streamable_http_host_port_arguments():
             "postgres_mcp",
             "postgresql://user:password@localhost/db",
             "--transport=streamable-http",
-            "--streamable-http-host=0.0.0.0",
+            "--streamable-http-host=127.0.0.1",
             "--streamable-http-port=9000",
         ]
 
@@ -67,7 +67,7 @@ async def test_streamable_http_host_port_arguments():
             await main()
 
             # Verify the host and port were set correctly
-            assert mcp.settings.host == "0.0.0.0"
+            assert mcp.settings.host == "127.0.0.1"
             assert mcp.settings.port == 9000
     finally:
         sys.argv = original_argv
@@ -85,7 +85,7 @@ async def test_sse_host_port_arguments():
             "postgres_mcp",
             "postgresql://user:password@localhost/db",
             "--transport=sse",
-            "--sse-host=0.0.0.0",
+            "--sse-host=127.0.0.1",
             "--sse-port=8080",
         ]
 
@@ -96,7 +96,7 @@ async def test_sse_host_port_arguments():
             await main()
 
             # Verify the host and port were set correctly
-            assert mcp.settings.host == "0.0.0.0"
+            assert mcp.settings.host == "127.0.0.1"
             assert mcp.settings.port == 8080
     finally:
         sys.argv = original_argv
