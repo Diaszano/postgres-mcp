@@ -11,6 +11,7 @@ from typing import List
 from typing import Optional
 from urllib.parse import urlparse
 from urllib.parse import urlunparse
+from uuid import uuid4
 
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
@@ -266,24 +267,67 @@ class SqlDriver:
         if self.is_pool:
             pool = await self.conn.pool_connect()
             async with pool.connection() as connection:
-                return await self._execute_with_connection(
+                return await self._execute_bounded_with_connection(
                     connection,
                     query,
-                    None,
-                    force_readonly=True,
-                    result_limits=(max_rows, max_result_bytes, timeout_seconds, safe_row_yielding),
+                    max_rows,
+                    max_result_bytes,
+                    timeout_seconds,
+                    safe_row_yielding,
                 )
-        return await self._execute_with_connection(
+        return await self._execute_bounded_with_connection(
             self.conn,
             query,
-            None,
-            force_readonly=True,
-            result_limits=(max_rows, max_result_bytes, timeout_seconds, safe_row_yielding),
+            max_rows,
+            max_result_bytes,
+            timeout_seconds,
+            safe_row_yielding,
         )
 
-    async def _execute_with_connection(
-        self, connection, query, params, force_readonly, result_limits=None
-    ) -> Optional[List[RowResult]] | BoundedQueryResult:
+    async def _execute_bounded_with_connection(
+        self, connection, query, max_rows, max_result_bytes, timeout_seconds, safe_row_yielding
+    ) -> BoundedQueryResult:
+        transaction_started = False
+        try:
+            async with connection.cursor(row_factory=dict_row) as control_cursor:
+                await control_cursor.execute("BEGIN TRANSACTION READ ONLY")
+                transaction_started = True
+                await control_cursor.execute("SET TRANSACTION READ ONLY")
+                await control_cursor.execute("SET LOCAL search_path = pg_catalog, public, pg_temp")
+                remaining = remaining_query_seconds()
+                if remaining is not None:
+                    milliseconds = max(1, math.ceil(remaining * 1000))
+                    await control_cursor.execute(
+                        "SELECT pg_catalog.set_config('statement_timeout', %s, true)",
+                        [str(milliseconds)],
+                    )
+                from .safe_sql import validate_restricted_function_resolution
+
+                await validate_restricted_function_resolution(control_cursor, query)
+                async with connection.cursor(name=f"bounded_{uuid4().hex}", row_factory=dict_row) as cursor:
+                    await cursor.execute(query)
+                    if cursor.description is None:
+                        raise ValueError("Bounded query did not return rows")
+                    result = await read_bounded_result(
+                        cursor,
+                        max_rows=max_rows,
+                        max_result_bytes=max_result_bytes,
+                        timeout_seconds=timeout_seconds,
+                        safe_row_yielding=safe_row_yielding,
+                    )
+                await control_cursor.execute("ROLLBACK")
+                transaction_started = False
+                return result
+        except BaseException as e:
+            if transaction_started:
+                try:
+                    await connection.rollback()
+                except Exception as rollback_error:
+                    log_public_error(logger, "rollback_transaction", rollback_error)
+            log_public_error(logger, "execute_bounded_query", e)
+            raise
+
+    async def _execute_with_connection(self, connection, query, params, force_readonly) -> Optional[List[RowResult]]:
         """Execute query with the given connection."""
         transaction_started = False
         try:
@@ -315,10 +359,9 @@ class SqlDriver:
                 else:
                     await cursor.execute(query)
 
-                if result_limits is None:
-                    # Preserve legacy multi-statement behavior for existing callers.
-                    while cursor.nextset():
-                        pass
+                # For multiple statements, move to the last statement's results
+                while cursor.nextset():
+                    pass
 
                 if cursor.description is None:  # No results (like DDL statements)
                     if not force_readonly:
@@ -327,20 +370,6 @@ class SqlDriver:
                         await cursor.execute("ROLLBACK")
                         transaction_started = False
                     return None
-
-                if result_limits is not None:
-                    max_rows, max_result_bytes, timeout_seconds, safe_row_yielding = result_limits
-                    result = await read_bounded_result(
-                        cursor,
-                        max_rows=max_rows,
-                        max_result_bytes=max_result_bytes,
-                        timeout_seconds=timeout_seconds,
-                        safe_row_yielding=safe_row_yielding,
-                    )
-                    if transaction_started:
-                        await cursor.execute("ROLLBACK")
-                        transaction_started = False
-                    return result
 
                 # Get results from the last statement only
                 rows = await cursor.fetchall()

@@ -36,7 +36,7 @@ def results_module():
 async def test_large_query_fetches_bounded_rows():
     results = results_module()
     cursor = GeneratedCursor(1_000_000)
-    result = await results.read_bounded_result(cursor, max_rows=200, max_result_bytes=2_097_152, timeout_seconds=15)
+    result = await results.read_bounded_result(cursor, max_rows=200, max_result_bytes=2_097_152, timeout_seconds=15, safe_row_yielding=True)
     assert result.returned_rows == len(result.rows) == 200
     assert cursor.fetched == 201
     assert max(cursor.requests) <= 200
@@ -48,7 +48,13 @@ async def test_large_query_fetches_bounded_rows():
 @pytest.mark.parametrize("count, truncated", [(0, False), (199, False), (200, False), (201, True)])
 async def test_truncation_is_explicit(count, truncated):
     results = results_module()
-    result = await results.read_bounded_result(GeneratedCursor(count), max_rows=200, max_result_bytes=2_097_152, timeout_seconds=15)
+    result = await results.read_bounded_result(
+        GeneratedCursor(count),
+        max_rows=200,
+        max_result_bytes=2_097_152,
+        timeout_seconds=15,
+        safe_row_yielding=True,
+    )
     assert result.returned_rows == min(count, 200)
     assert result.truncated is truncated
     assert result.limit_reached == ("max_rows" if truncated else None)
@@ -97,3 +103,35 @@ async def test_unproven_rows_are_reported_incomplete_without_lookahead():
     assert cursor.fetched == 200
     assert result.truncated is True
     assert result.limit_reached == "max_rows"
+
+
+@pytest.mark.asyncio
+async def test_lookahead_is_disabled_by_default():
+    results = results_module()
+    cursor = GeneratedCursor(201)
+    result = await results.read_bounded_result(cursor, max_rows=200, max_result_bytes=2_097_152, timeout_seconds=15)
+    assert cursor.fetched == 200
+    assert result.truncated is True
+
+
+@pytest.mark.asyncio
+async def test_final_truncation_metadata_does_not_drop_first_row():
+    results = results_module()
+    with pytest.raises(PublicToolError) as error:
+        await results.read_bounded_result(
+            GeneratedCursor(1, {"value": "x" * 100}),
+            max_rows=1,
+            max_result_bytes=223,
+            timeout_seconds=15,
+            safe_row_yielding=False,
+        )
+    assert error.value.code == "RESULT_TOO_LARGE"
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_encoder_rejects_non_json_float_values(value):
+    results = results_module()
+    result = results.BoundedQueryResult([{"value": value}], 1, False, None, 0, 15)
+    with pytest.raises(PublicToolError) as error:
+        results.encode_bounded_result(result, 2_097_152)
+    assert error.value.code == "RESULT_TOO_LARGE"
