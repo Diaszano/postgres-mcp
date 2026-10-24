@@ -58,6 +58,7 @@ from .sql.database_catalog import DiscoveryUnavailableError
 from .sql.database_registry import DatabaseRegistry
 from .sql.database_registry import DatabaseUnavailableError
 from .sql.database_registry import PoolCapacityError
+from .sql.database_session import database_session
 from .top_queries import TopQueriesCalc
 
 # Initialize FastMCP with default settings
@@ -456,7 +457,20 @@ If there is no hypothetical index, you can pass an empty list.""",
         hypothetical_indexes: Optional list of indexes to simulate
     """
     try:
-        async with get_sql_driver(database) as sql_driver:
+        use_hypopg = bool(hypothetical_indexes) and not analyze
+        driver_context = (
+            database_session(
+                database,
+                restricted=current_access_mode == AccessMode.RESTRICTED,
+                registry=registry,
+                bootstrap_pool=db_connection,
+            )
+            if use_hypopg
+            else get_sql_driver(database)
+        )
+        async with driver_context as sql_driver:
+            if use_hypopg and current_access_mode == AccessMode.RESTRICTED:
+                sql_driver = SafeSqlDriver(sql_driver=sql_driver, timeout=30)
             if isinstance(sql_driver, SafeSqlDriver):
                 # Restricted: reject the user SQL before any query (hypopg check, bind lookups, EXPLAIN [ANALYZE]).
                 sql_driver.validate(sql)

@@ -29,6 +29,7 @@ class Connection:
         yield Cursor(self)
 
     async def rollback(self):
+        assert not self.closed, "cannot roll back a closed connection"
         self.rollback_started.set()
         if self.rollback_gate is not None:
             await self.rollback_gate.wait()
@@ -329,3 +330,18 @@ async def test_cancelled_checkout_releases_registry_lease():
     assert registry.active_leases("app") == 0
     assert pool.active == 0
     await registry.close_all()
+
+
+@pytest.mark.asyncio
+async def test_retired_connection_is_released_without_rollback():
+    pool = Pool()
+    primary_error = ValueError("session failed")
+    with pytest.raises(ValueError) as raised:
+        async with session(None, restricted=False, registry=None, bootstrap_pool=pool):
+            await pool.backend.close()
+            raise primary_error
+
+    assert raised.value is primary_error
+    assert pool.backend.closed
+    assert pool.backend.rollbacks == 0
+    assert pool.checkins == 1

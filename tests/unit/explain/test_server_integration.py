@@ -31,7 +31,7 @@ def driver_context(driver):
     """Stand-in for get_sql_driver that yields the test's own driver."""
 
     @asynccontextmanager
-    async def fake_get_sql_driver(database=None):
+    async def fake_get_sql_driver(database=None, **session_options):
         yield driver
 
     return fake_get_sql_driver
@@ -110,7 +110,10 @@ async def test_explain_query_with_hypothetical_indexes_integration():
         mock_safe_driver.execute_query = mock_execute_query
 
         # Patch the get_sql_driver
-        with patch("postgres_mcp.server.get_sql_driver", driver_context(mock_safe_driver)):
+        with (
+            patch("postgres_mcp.server.get_sql_driver", driver_context(mock_safe_driver)),
+            patch("postgres_mcp.server.database_session", driver_context(mock_safe_driver)),
+        ):
             # Patch the ExplainPlanTool
             with patch("postgres_mcp.server.ExplainPlanTool") as tool_cls:
                 result = await explain_query(test_sql, analyze=False, hypothetical_indexes=test_indexes)
@@ -143,7 +146,10 @@ async def test_explain_query_missing_hypopg_integration():
     # Patch the format_text_response function
     with patch("postgres_mcp.server.format_text_response", return_value=[mock_text_result]):
         # Patch the get_sql_driver
-        with patch("postgres_mcp.server.get_sql_driver", driver_context(mock_safe_driver)):
+        with (
+            patch("postgres_mcp.server.get_sql_driver", driver_context(mock_safe_driver)),
+            patch("postgres_mcp.server.database_session", driver_context(mock_safe_driver)),
+        ):
             # Patch the ExplainPlanTool
             with patch("postgres_mcp.server.ExplainPlanTool") as tool_cls:
                 result = await explain_query(test_sql, analyze=False, hypothetical_indexes=test_indexes)
