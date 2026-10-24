@@ -113,7 +113,7 @@ class DatabaseRegistry:
 
     @asynccontextmanager
     async def acquire(self, database: str | None = None) -> AsyncIterator[DbConnPool]:
-        """Hold a lease on the database's pool for the whole `async with` body."""
+        """Hold a pool lease through the whole body, including physical connection checkin."""
         self._ensure_running()
         requested = database if database is not None else self._config.default_database
         if requested is None:
