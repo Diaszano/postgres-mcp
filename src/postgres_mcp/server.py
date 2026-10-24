@@ -505,8 +505,8 @@ If there is no hypothetical index, you can pass an empty list.""",
 async def execute_sql(
     sql: str = Field(description="SQL to run", default="all"),
     database: Annotated[str | None, Field(description="Database to use; omit for the default database")] = None,
-    max_rows: int | None = None,
-    timeout_seconds: int | None = None,
+    max_rows: Annotated[int | None, Field(strict=True)] = None,
+    timeout_seconds: Annotated[int | None, Field(strict=True)] = None,
 ) -> ResponseType:
     """Executes a SQL query against the database."""
     try:
