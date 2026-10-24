@@ -33,7 +33,22 @@ class QueryAdmission:
             async with asyncio.timeout_at(deadline):
                 async with self._semaphore:
                     remaining_query_seconds()
-                    result = await operation()
+                    task = asyncio.ensure_future(operation())
+                    try:
+                        result = await asyncio.shield(task)
+                    except asyncio.CancelledError:
+                        task.cancel()
+                        # Hold the permit until pool return finishes, even if shutdown cancels us again.
+                        while True:
+                            try:
+                                await asyncio.shield(task)
+                            except asyncio.CancelledError:
+                                if not task.done():
+                                    continue
+                            except Exception:
+                                pass
+                            break
+                        raise
                     # Synchronous serialization may finish before asyncio schedules cancellation.
                     remaining_query_seconds()
                     return result
