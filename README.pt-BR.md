@@ -142,21 +142,21 @@ Agora você vai editar a seção `mcpServers` do arquivo de configuração.
         "--rm",
         "-e",
         "DATABASE_URI",
+        "-e",
+        "DATABASE_DOCKER_REMAP_LOCALHOST",
         "crystaldba/postgres-mcp",
         "--access-mode=unrestricted"
       ],
       "env": {
-        "DATABASE_URI": "postgresql://username:password@localhost:5432/dbname"
+        "DATABASE_URI": "postgresql://username:password@localhost:5432/dbname",
+        "DATABASE_DOCKER_REMAP_LOCALHOST": "true"
       }
     }
   }
 }
 ```
 
-A imagem Docker do Postgres MCP Pro remapeia automaticamente o nome de host `localhost` para que funcione de dentro do contêiner.
-
-- MacOS/Windows: usa `host.docker.internal` automaticamente
-- Linux: usa `172.17.0.1` ou o endereço de host apropriado automaticamente
+O remapeamento do host Docker fica desativado por padrão. Defina `DATABASE_DOCKER_REMAP_LOCALHOST=true` no ambiente do contêiner para remapear o host `localhost` do banco. O entrypoint usa `host.docker.internal` no MacOS/Windows ou `172.17.0.1` no Linux quando estiver acessível.
 
 ##### Se você está usando `uvx`
 
