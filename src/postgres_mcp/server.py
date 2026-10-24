@@ -35,11 +35,13 @@ from .explain import ExplainPlanTool
 from .index.index_opt_base import MAX_NUM_INDEX_TUNING_QUERIES
 from .index.llm_opt import LLMOptimizerTool
 from .index.presentation import TextPresentation
+from .security.errors import DatabaseNotAllowedError
+from .security.errors import log_public_error
+from .security.errors import to_public_error
 from .sql import DbConnPool
 from .sql import SafeSqlDriver
 from .sql import SqlDriver
 from .sql import check_hypopg_installation_status
-from .sql import obfuscate_password
 from .sql.database_catalog import DatabaseCatalog
 from .sql.database_catalog import DatabaseConfigurationError
 from .sql.database_catalog import DiscoveryUnavailableError
@@ -109,7 +111,7 @@ async def get_sql_driver(database: str | None = None) -> AsyncIterator[Union[Sql
             yield _wrap_driver(pool)
         return
     if database is not None and database != _bootstrap_database():
-        raise ValueError(f"Database {database!r} is not available: selecting a database requires DATABASE_AUTO_DISCOVER=true")
+        raise DatabaseNotAllowedError("Selecting another database requires DATABASE_AUTO_DISCOVER=true")
     yield _wrap_driver(db_connection)
 
 
@@ -121,6 +123,11 @@ def format_text_response(text: Any) -> ResponseType:
 def format_error_response(error: str) -> ResponseType:
     """Format an error response."""
     return format_text_response(f"Error: {error}")
+
+
+def format_exception_response(operation: str, exc: BaseException) -> ResponseType:
+    log_public_error(logger, operation, exc)
+    return format_error_response(to_public_error(exc).message)
 
 
 @mcp.tool(
@@ -144,8 +151,7 @@ async def list_databases(refresh: Annotated[bool, Field(description="Force a new
             rows = [{"name": _bootstrap_database(), "is_default": True, "connection_state": state, "catalog_stale": False}]
         return format_text_response(json.dumps(rows))
     except Exception as e:
-        logger.error(f"Error listing databases: {e}")
-        return format_error_response(str(e))
+        return format_exception_response("list_databases", e)
 
 
 @mcp.tool(
@@ -178,8 +184,7 @@ async def list_schemas(
             schemas = [row.cells for row in rows] if rows else []
             return format_text_response(schemas)
     except Exception as e:
-        logger.error(f"Error listing schemas: {e}")
-        return format_error_response(str(e))
+        return format_exception_response("list_schemas", e)
 
 
 @mcp.tool(
@@ -255,8 +260,7 @@ async def list_objects(
 
             return format_text_response(objects)
     except Exception as e:
-        logger.error(f"Error listing objects: {e}")
-        return format_error_response(str(e))
+        return format_exception_response("list_objects", e)
 
 
 @mcp.tool(
@@ -394,8 +398,7 @@ async def get_object_details(
 
             return format_text_response(result)
     except Exception as e:
-        logger.error(f"Error getting object details: {e}")
-        return format_error_response(str(e))
+        return format_exception_response("get_object_details", e)
 
 
 @mcp.tool(
@@ -483,8 +486,7 @@ If there is no hypothetical index, you can pass an empty list.""",
                     error_message = result.to_text()
                 return format_error_response(error_message)
     except Exception as e:
-        logger.error(f"Error explaining query: {e}")
-        return format_error_response(str(e))
+        return format_exception_response("explain_query", e)
 
 
 # Query function declaration without the decorator - we'll add it dynamically based on access mode
@@ -500,8 +502,7 @@ async def execute_sql(
                 return format_text_response("No results")
             return format_text_response(list([r.cells for r in rows]))
     except Exception as e:
-        logger.error(f"Error executing query: {e}")
-        return format_error_response(str(e))
+        return format_exception_response("execute_sql", e)
 
 
 @mcp.tool(
@@ -528,8 +529,7 @@ async def analyze_workload_indexes(
             result = await dta_tool.analyze_workload(max_index_size_mb=max_index_size_mb)
             return format_text_response(result)
     except Exception as e:
-        logger.error(f"Error analyzing workload: {e}")
-        return format_error_response(str(e))
+        return format_exception_response("analyze_workload_indexes", e)
 
 
 @mcp.tool(
@@ -562,8 +562,7 @@ async def analyze_query_indexes(
             result = await dta_tool.analyze_queries(queries=queries, max_index_size_mb=max_index_size_mb)
             return format_text_response(result)
     except Exception as e:
-        logger.error(f"Error analyzing queries: {e}")
-        return format_error_response(str(e))
+        return format_exception_response("analyze_query_indexes", e)
 
 
 @mcp.tool(
@@ -601,7 +600,7 @@ async def analyze_db_health(
             health_tool = DatabaseHealthTool(sql_driver)
             result = await health_tool.health(health_type=health_type)
     except (DatabaseUnavailableError, DiscoveryUnavailableError, DatabaseConfigurationError, PoolCapacityError, ValueError) as e:
-        return format_error_response(str(e))
+        return format_exception_response("analyze_db_health", e)
     return format_text_response(result)
 
 
@@ -636,8 +635,7 @@ async def get_top_queries(
                 return format_error_response("Invalid sort criteria. Please use 'resources' or 'mean_time' or 'total_time'.")
             return format_text_response(result)
     except Exception as e:
-        logger.error(f"Error getting slow queries: {e}")
-        return format_error_response(str(e))
+        return format_exception_response("get_top_queries", e)
 
 
 async def main():
@@ -727,9 +725,7 @@ async def main():
             await db_connection.pool_connect(database_config.bootstrap_uri)
             logger.info("Successfully connected to database and initialized connection pool")
         except Exception as e:
-            logger.warning(
-                f"Could not connect to database: {obfuscate_password(str(e))}",
-            )
+            log_public_error(logger, "startup_database_connection", e, level=logging.WARNING)
             logger.warning(
                 "The MCP server will start but database operations will fail until a valid connection is established.",
             )
@@ -783,7 +779,7 @@ async def shutdown(sig=None):
         await db_connection.close()
         logger.info("Closed database connections")
     except Exception as e:
-        logger.error(f"Error closing database connections: {e}")
+        log_public_error(logger, "close_database_connections", e)
 
     # Exit with appropriate status code
     sys.exit(128 + sig if sig is not None else 0)

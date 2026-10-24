@@ -10,6 +10,8 @@ import humanize
 
 from ..artifacts import ExplainPlanArtifact
 from ..artifacts import calculate_improvement_multiple
+from ..security.errors import log_public_error
+from ..security.errors import to_public_error
 from ..sql import SqlDriver
 from .dta_calc import IndexTuningBase
 from .index_opt_base import IndexDefinition
@@ -166,8 +168,8 @@ class TextPresentation:
                 **langfuse_trace,
             }
         except Exception as e:
-            logger.error(f"Error analyzing queries: {e}", exc_info=True)
-            return {"error": f"Error analyzing queries: {e}"}
+            log_public_error(logger, "present_query_analysis", e)
+            return {"error": to_public_error(e).message}
 
     def _build_recommendations_list(self, session: IndexTuningResult) -> List[Dict[str, Any]]:
         recommendations = []

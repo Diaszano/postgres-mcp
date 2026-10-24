@@ -81,6 +81,8 @@ from psycopg.sql import Composable
 from psycopg.sql import Literal
 from typing_extensions import LiteralString
 
+from ..security.errors import SQLValidationError
+from ..security.errors import log_public_error
 from .sql_driver import SqlDriver
 
 logger = logging.getLogger(__name__)
@@ -977,10 +979,10 @@ class SafeSqlDriver(SqlDriver):
                             )
                     self._validate_node(stmt)
             except Exception as e:
-                raise ValueError(f"Error validating query: {query}: {e}") from e
+                raise SQLValidationError(f"Error validating query: {query}: {e}") from e
 
         except pglast.parser.ParseError as e:
-            raise ValueError("Failed to parse SQL statement") from e
+            raise SQLValidationError("Failed to parse SQL statement") from e
 
     async def execute_query(
         self,
@@ -1001,13 +1003,13 @@ class SafeSqlDriver(SqlDriver):
                         force_readonly=True,
                     )
             except asyncio.TimeoutError as e:
-                logger.warning(f"Query execution timed out after {self.timeout} seconds: {query[:100]}...")
+                log_public_error(logger, "restricted_query_timeout", e, level=logging.WARNING)
                 raise ValueError(
                     f"Query execution timed out after {self.timeout} seconds in restricted mode. "
                     "Consider simplifying your query or increasing the timeout."
                 ) from e
             except Exception as e:
-                logger.error(f"Error executing query: {e}")
+                log_public_error(logger, "restricted_execute_query", e)
                 raise
         else:
             return await self.sql_driver.execute_query(
