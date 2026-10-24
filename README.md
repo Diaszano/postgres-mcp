@@ -223,8 +223,8 @@ Replace `postgresql://...` with your [Postgres database connection URI](https://
 ##### Access Mode
 
 Postgres MCP Pro supports multiple *access modes* to give you control over the operations that the AI agent can perform on the database:
-- **Unrestricted Mode**: Allows full read/write access to modify data and schema. It is suitable for development environments.
-- **Restricted Mode**: Limits operations to read-only transactions and imposes constraints on resource utilization (presently only execution time). Only `SELECT`, `EXPLAIN` (without `ANALYZE`), `SHOW`, and `ANALYZE` statements are allowed; `VACUUM` is rejected because it cannot run inside a transaction block. A rejected statement returns an error that states the reason. It is suitable for production environments.
+- **Unrestricted Mode**: Allows full read/write access to modify data and schema when query guardrails are disabled. It is suitable for development environments.
+- **Restricted Mode**: Limits operations to read-only transactions, validates SQL, and limits execution time. With query guardrails disabled, `execute_sql` accepts `SELECT`, `EXPLAIN` (without `ANALYZE`), and `SHOW`; standalone `ANALYZE` and `VACUUM` are rejected. Enabling query guardrails further limits `execute_sql` to one safe read-only row-producing query in either access mode; see the migration note below.
 
 To use restricted mode, replace `--access-mode=unrestricted` with `--access-mode=restricted` in the configuration examples above.
 
@@ -318,7 +318,7 @@ DATABASE_URI='postgresql://user:password@localhost:5432/app_development' uvx pos
 - Default access mode stays `unrestricted`.
 - `database` is accepted only when it equals the URI database; any other name is rejected with an error (no discovery, no fallback).
 - `list_databases` returns only that database. If the URI has no database name, `name` is `null`.
-- `DATABASE_ALLOWED_DATABASES`, `DATABASE_EXCLUDED_DATABASES` and the other variables below have no effect.
+- `DATABASE_ALLOWED_DATABASES`, `DATABASE_EXCLUDED_DATABASES` and discovery/pool settings below have no effect. Query guardrails apply in both legacy and discovery modes.
 
 ### Discovery mode
 
@@ -343,17 +343,19 @@ uvx postgres-mcp
 | `DATABASE_MAX_POOLS` | `4` | Maximum number of database pools open at the same time. |
 | `DATABASE_POOL_MAX_SIZE` | `2` | Maximum connections per database pool. |
 | `DATABASE_POOL_IDLE_SECONDS` | `600` | Idle time after which an unused pool may be closed. |
-| `DATABASE_QUERY_GUARDRAILS_ENABLED` | `false` | Enables SQL query budgets. Remote transports warn at startup while disabled. |
+| `DATABASE_QUERY_GUARDRAILS_ENABLED` | `false` | Enables query budgets and limits `execute_sql` to one safe read-only row-producing query in either access mode. See migration guidance below. Remote transports warn at startup while disabled. |
 | `DATABASE_QUERY_DEFAULT_MAX_ROWS` | `200` | Default maximum rows returned by one query. |
 | `DATABASE_QUERY_HARD_MAX_ROWS` | `5000` | Maximum row limit a tool call may request. |
 | `DATABASE_QUERY_DEFAULT_TIMEOUT_SECONDS` | `15` | Default query timeout in seconds. |
 | `DATABASE_QUERY_HARD_TIMEOUT_SECONDS` | `60` | Maximum timeout a tool call may request. |
-| `DATABASE_QUERY_MAX_RESULT_BYTES` | `2097152` | Maximum serialized result size in bytes; maximum configurable value is 64 MiB. |
+| `DATABASE_QUERY_MAX_RESULT_BYTES` | `2097152` | Maximum UTF-8 JSON size of the MCP `CallToolResult`, including escaped text, structured output and metadata; excludes the JSON-RPC envelope and transport framing. Maximum configurable value is 64 MiB. |
 | `DATABASE_QUERY_MAX_CONCURRENCY` | `4` | Maximum concurrent budgeted SQL executions; maximum configurable value is 256. |
 
 Both list variables accept a comma-separated list (`app,testing`, spaces around names are trimmed) or, when the value starts with `[`, a JSON array of strings (`["app", "name,with,comma"]`).
 Use the JSON form for names that contain commas. Names are never lower-cased or otherwise normalized.
 Numeric variables must be integers of at least 1; invalid values stop the server at startup with an error that never includes the URI or password. Query guardrail settings are strict positive integers; default row and timeout values cannot exceed their hard limits. Row limits are capped at 10,000,000 and timeout limits at 3,600 seconds. Guardrails default to disabled during migration.
+
+**Migrating `execute_sql` to query guardrails.** Before setting `DATABASE_QUERY_GUARDRAILS_ENABLED=true`, migrate callers: enabled mode accepts only one safe read-only row-producing query, including with `--access-mode=unrestricted`. Writes/DDL, multiple statements, `SHOW`, `EXPLAIN`, `SELECT INTO`, modifying CTEs, and row-locking clauses are rejected. Split read-only batches into separate calls, use `explain_query` for plans, and move writes or other unsupported statements to a separate authorized database client before enabling the flag. With the flag disabled and budget arguments omitted, `execute_sql` keeps its legacy statement behavior and result shape. Pagination remains unavailable.
 
 **What is discoverable.** A database is listed only if it is not a template, accepts connections, the role has `CONNECT` on it, and it passes the allow and deny lists.
 The database in `DATABASE_URI` is only the bootstrap connection: it is not special.

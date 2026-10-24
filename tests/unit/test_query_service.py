@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from mcp.server.fastmcp.tools import Tool
+from mcp.types import CallToolResult
 from psycopg.errors import QueryCanceled
 
 import postgres_mcp.server as server
@@ -14,6 +15,7 @@ from postgres_mcp.query_limits.admission import QueryAdmission
 from postgres_mcp.query_limits.admission import remaining_query_seconds
 from postgres_mcp.query_limits.config import QueryBudgetConfig
 from postgres_mcp.query_limits.results import BoundedQueryResult
+from postgres_mcp.query_limits.results import encode_bounded_result
 from postgres_mcp.security.errors import to_public_error
 from postgres_mcp.sql import SafeSqlDriver
 from postgres_mcp.sql import SqlDriver
@@ -21,6 +23,11 @@ from postgres_mcp.sql import SqlDriver
 
 def result():
     return BoundedQueryResult([{"answer": 1}], 1, False, None, 0, 15)
+
+
+def mcp_result(response):
+    content, structured = Tool.from_function(server.execute_sql).fn_metadata.convert_result(response)
+    return CallToolResult(content=content, structuredContent=structured)
 
 
 @pytest.fixture
@@ -61,6 +68,64 @@ async def test_guarded_small_result_preserves_text_fallback(monkeypatch, guarded
     assert payload["limit_reached"] is None
     driver.execute_bounded_query.assert_awaited_once_with("SELECT 1", max_rows=200, max_result_bytes=2097152, timeout_seconds=15)
     driver.execute_query.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bytes_below_boundary", [0, 1])
+async def test_mcp_byte_budget_counts_escaping_and_wrapper(monkeypatch, bytes_below_boundary):
+    rows = [{"value": '"\\\n\tá🙂' * 5} for _ in range(2)]
+    one_row = BoundedQueryResult(rows[:1], 1, True, "max_result_bytes", 0, 15)
+    one_response = server.format_text_response(encode_bounded_result(one_row, 10000).decode("utf-8"))
+    boundary = len(mcp_result(one_response).model_dump_json(exclude_none=True).encode("utf-8"))
+    budget = boundary - bytes_below_boundary
+    full_result = BoundedQueryResult(rows[:], 2, False, None, 0, 15)
+    assert len(encode_bounded_result(full_result, budget)) <= budget
+    monkeypatch.setattr(server, "query_budget_config", QueryBudgetConfig(enabled=True, max_result_bytes=budget))
+    driver = AsyncMock(spec=SqlDriver)
+    driver.execute_bounded_query.return_value = full_result
+
+    @asynccontextmanager
+    async def get_driver(database=None):
+        yield driver
+
+    monkeypatch.setattr(server, "get_sql_driver", get_driver)
+    response = await server.execute_sql("SELECT 1")
+    if bytes_below_boundary:
+        assert response[0].text == "Error: The query result exceeds the response size limit."
+    else:
+        serialized = mcp_result(response).model_dump_json(exclude_none=True).encode("utf-8")
+        assert len(serialized) == budget
+        payload = json.loads(response[0].text)
+        assert payload["rows"] == rows[:1]
+        assert payload["returned_rows"] == 1
+        assert payload["truncated"] is True
+        assert payload["limit_reached"] == "max_result_bytes"
+
+
+@pytest.mark.asyncio
+async def test_deadline_covers_final_mcp_serialization(monkeypatch, guarded):
+    driver = AsyncMock(spec=SqlDriver)
+    driver.execute_bounded_query.return_value = result()
+    original_dump = CallToolResult.model_dump_json
+
+    class ShortAdmission(QueryAdmission):
+        async def run(self, operation, timeout_seconds):
+            return await super().run(operation, 0.01)
+
+    def slow_dump(self, *args, **kwargs):
+        assert remaining_query_seconds() is not None
+        time.sleep(0.02)
+        return original_dump(self, *args, **kwargs)
+
+    @asynccontextmanager
+    async def get_driver(database=None):
+        yield driver
+
+    monkeypatch.setattr(server, "get_sql_driver", get_driver)
+    monkeypatch.setattr(server, "query_admission", ShortAdmission(1))
+    monkeypatch.setattr(CallToolResult, "model_dump_json", slow_dump)
+    assert (await server.execute_sql("SELECT 1"))[0].text == "Error: The query exceeded its time limit."
+    assert remaining_query_seconds() is None
 
 
 @pytest.mark.asyncio

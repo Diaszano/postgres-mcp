@@ -525,8 +525,28 @@ async def execute_sql(
 
             async def execute_guarded() -> ResponseType:
                 result = await service.execute(sql, database, limits)
-                encoded = encode_bounded_result(result, query_budget_config.max_result_bytes)
-                return format_text_response(encoded.decode("utf-8"))
+                while True:
+                    try:
+                        encoded = encode_bounded_result(result, query_budget_config.max_result_bytes)
+                        response = format_text_response(encoded.decode("utf-8"))
+                        # FastMCP also exposes this annotated return value as structured output.
+                        structured = {"result": [block.model_dump(mode="json", by_alias=True) for block in response]}
+                        serialized = (
+                            types.CallToolResult(content=list(response), structuredContent=structured)
+                            .model_dump_json(exclude_none=True)
+                            .encode("utf-8")
+                        )
+                        if len(serialized) <= query_budget_config.max_result_bytes:
+                            return response
+                    except PublicToolError as exc:
+                        if exc.code != "RESULT_TOO_LARGE":
+                            raise
+                    if len(result.rows) <= 1:
+                        raise PublicToolError("RESULT_TOO_LARGE", "The query result exceeds the response size limit.")
+                    result.rows.pop()
+                    result.returned_rows = len(result.rows)
+                    result.truncated = True
+                    result.limit_reached = "max_result_bytes"
 
             return await query_admission.run(execute_guarded, limits.timeout_seconds)
         async with get_sql_driver(database) as sql_driver:
