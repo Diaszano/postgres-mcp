@@ -246,12 +246,11 @@ Muitos clientes MCP têm arquivos de configuração semelhantes aos do Claude De
 O Postgres MCP Pro oferece suporte ao [transporte SSE](https://modelcontextprotocol.io/docs/concepts/transports#server-sent-events-sse), que permite que vários clientes MCP compartilhem um único servidor, possivelmente remoto.
 Para usar o transporte SSE, você precisa iniciar o servidor com a opção `--transport=sse`.
 
-Por exemplo, com Docker run:
+Para um cliente local, execute o servidor na mesma máquina:
 
 ```bash
-docker run -p 8000:8000 \
-  -e DATABASE_URI=postgresql://username:password@localhost:5432/dbname \
-  crystaldba/postgres-mcp --access-mode=unrestricted --transport=sse
+DATABASE_URI='postgresql://username:password@localhost:5432/dbname' \
+  uvx postgres-mcp --access-mode=restricted --transport=sse
 ```
 
 Em seguida, atualize a configuração do seu cliente MCP para chamar o servidor MCP.
@@ -282,6 +281,31 @@ Para o Windsurf, o formato em `mcp_config.json` é um pouco diferente:
 ```
 
 <a id="multiple-databases-optional"></a>
+## Implantação HTTP autenticada
+
+**Migração:** SSE e Streamable HTTP continuam usando `localhost` por padrão. Endereços fora de loopback, incluindo `0.0.0.0`, `::`, IPs privados e nomes diferentes de `localhost`, agora são rejeitados antes das conexões ao banco e da inicialização HTTP, a menos que as três variáveis abaixo sejam válidas. Stdio ignora a configuração HTTP e não exige credenciais HTTP. `DATABASE_URI`, modos de acesso e parâmetros das ferramentas permanecem iguais.
+
+| Variável | Valor obrigatório para HTTP autenticado |
+| --- | --- |
+| `MCP_HTTP_AUTH_TOKEN` | Um segredo bearer aleatório com pelo menos 32 caracteres ASCII imprimíveis, sem espaços. Não o coloque nos argumentos do comando nem no controle de versão. |
+| `MCP_HTTP_ALLOWED_HOSTS` | Cabeçalhos Host exatos separados por vírgula, incluindo portas quando enviadas pelo cliente, como `mcp.example.com` ou `mcp.example.com:8443`. Curingas e URLs são rejeitados. |
+| `MCP_HTTP_ALLOWED_ORIGINS` | Origens HTTPS exatas separadas por vírgula, como `https://client.example.com`. Caminhos, credenciais e curingas são rejeitados. |
+
+Configure o segredo no armazenamento de segredos ou no ambiente do serviço e execute atrás de um proxy HTTPS com terminação TLS:
+
+```bash
+export MCP_HTTP_ALLOWED_HOSTS='mcp.example.com'
+export MCP_HTTP_ALLOWED_ORIGINS='https://client.example.com'
+# MCP_HTTP_AUTH_TOKEN e DATABASE_URI são fornecidos com segurança pelo ambiente do serviço.
+uvx postgres-mcp --access-mode=restricted --transport=streamable-http
+```
+
+Use `/mcp` para Streamable HTTP ou `--transport=sse` com `/sse` e `/messages/` para SSE. Os clientes devem enviar `Authorization: Bearer <segredo>` em todas as requisições HTTP, inclusive nos POSTs de mensagens SSE. Requisições anônimas ou com token inválido recebem 401. Requisições autenticadas com Host não permitido recebem 421; com Origin não permitido, recebem 403. Clientes nativos podem omitir Origin. O SDK MCP disponibiliza a identidade estável `configured-http-client`; todos os portadores do segredo compartilham o mesmo acesso ao banco. Trata-se de uma credencial bearer previamente provisionada, sem login OAuth nem serviço de autorização por usuário. Para rotacioná-la, altere o segredo e reinicie o processo.
+
+O proxy deve preservar Authorization, o Host público e qualquer cabeçalho Origin. Termine TLS no proxy, exponha apenas a porta HTTPS, limite conexões e requisições (incluindo streams SSE simultâneos) e impeça acesso direto ao backend com loopback ou regras de firewall. Não registre Authorization, segredos ou dados do banco nos logs do proxy. Uma declaração de ingresso confiável não habilita endereços públicos nem desativa a verificação bearer. Para um endereço privado de container/backend, use `--streamable-http-host=0.0.0.0` ou `--sse-host=0.0.0.0` **com as mesmas variáveis de autenticação** e restrinja o acesso de rede ao ingresso. Publicar a porta do container não expõe um processo vinculado ao loopback do próprio container.
+
+O caminho de autenticação, identidade e Host/Origin é exercitado com o SDK MCP 1.25.0 nos testes focados de transporte. Terminação TLS, isolamento do proxy e limites de tráfego são responsabilidades da implantação; este repositório não instala nem verifica uma implantação de proxy.
+
 ## Múltiplos bancos de dados (opcional)
 
 Por padrão, o Postgres MCP Pro conversa com o único banco de dados indicado em `DATABASE_URI`, exatamente como antes.

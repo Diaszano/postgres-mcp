@@ -243,12 +243,11 @@ Many MCP clients have similar configuration files to Claude Desktop, and you can
 Postgres MCP Pro supports the [SSE transport](https://modelcontextprotocol.io/docs/concepts/transports#server-sent-events-sse), which allows multiple MCP clients to share one server, possibly a remote server.
 To use the SSE transport, you need to start the server with the `--transport=sse` option.
 
-For example, with Docker run:
+For a local client, run the server on the same host:
 
 ```bash
-docker run -p 8000:8000 \
-  -e DATABASE_URI=postgresql://username:password@localhost:5432/dbname \
-  crystaldba/postgres-mcp --access-mode=unrestricted --transport=sse
+DATABASE_URI='postgresql://username:password@localhost:5432/dbname' \
+  uvx postgres-mcp --access-mode=restricted --transport=sse
 ```
 
 Then update your MCP client configuration to call the the MCP server.
@@ -277,6 +276,31 @@ For Windsurf, the format in `mcp_config.json` is slightly different:
     }
 }
 ```
+
+## Authenticated HTTP deployment
+
+**Migration:** SSE and Streamable HTTP still bind to `localhost` by default. Non-loopback binds, including `0.0.0.0`, `::`, private IPs and hostnames other than `localhost`, now fail before database connections or HTTP startup unless all three variables below are valid. Stdio ignores HTTP settings and requires no HTTP credentials. `DATABASE_URI`, access modes and tool parameters are unchanged.
+
+| Variable | Required value for authenticated HTTP |
+| --- | --- |
+| `MCP_HTTP_AUTH_TOKEN` | A randomly generated bearer secret of at least 32 printable ASCII characters, without spaces. Keep it out of command arguments and source control. |
+| `MCP_HTTP_ALLOWED_HOSTS` | Comma-separated exact Host headers, including ports when clients send them, such as `mcp.example.com` or `mcp.example.com:8443`. Wildcards and URLs are rejected. |
+| `MCP_HTTP_ALLOWED_ORIGINS` | Comma-separated exact HTTPS origins, such as `https://client.example.com`. Paths, credentials and wildcards are rejected. |
+
+Configure the secret through your service's secret store or environment, then run behind a TLS-terminating HTTPS proxy:
+
+```bash
+export MCP_HTTP_ALLOWED_HOSTS='mcp.example.com'
+export MCP_HTTP_ALLOWED_ORIGINS='https://client.example.com'
+# MCP_HTTP_AUTH_TOKEN and DATABASE_URI are supplied securely by the service environment.
+uvx postgres-mcp --access-mode=restricted --transport=streamable-http
+```
+
+Use `/mcp` for Streamable HTTP or `--transport=sse` with `/sse` and `/messages/` for SSE. Clients must send `Authorization: Bearer <secret>` on every HTTP request, including SSE message POSTs. Anonymous or invalid-token requests receive 401. Authenticated requests with an unlisted Host receive 421, and those with an unlisted Origin receive 403. Native clients may omit Origin. The MCP SDK exposes the stable principal `configured-http-client`; all holders of this shared secret have the same database access. This is a pre-provisioned bearer credential, without an OAuth login or per-user authorization service. Rotate it by changing the secret and restarting the process.
+
+The proxy must preserve Authorization, the public Host and any Origin header. Terminate TLS at the proxy, expose only its HTTPS listener, rate-limit connections and requests (including concurrent SSE streams), and prevent direct access to the backend with loopback binding or firewall rules. Do not log Authorization headers, secrets or database payloads at the proxy. A trusted-ingress declaration alone cannot enable public binding or bypass bearer verification. For a private container/backend bind, pass `--streamable-http-host=0.0.0.0` or `--sse-host=0.0.0.0` **with the same authentication variables** and restrict its network access to the ingress. Publishing a container port alone does not expose a process bound to the container's loopback interface.
+
+The authentication, principal and Host/Origin path is exercised against MCP SDK 1.25.0 in the focused transport tests. TLS termination, proxy isolation and rate limits are deployment responsibilities; no proxy deployment is installed or verified by this repository.
 
 ## Multiple Databases (Optional)
 

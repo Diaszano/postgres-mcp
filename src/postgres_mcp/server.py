@@ -38,6 +38,9 @@ from .index.presentation import TextPresentation
 from .security.errors import DatabaseNotAllowedError
 from .security.errors import log_public_error
 from .security.errors import to_public_error
+from .security.transport import HttpAuthConfig
+from .security.transport import run_authenticated_http
+from .security.transport import validate_http_deployment
 from .sql import DbConnPool
 from .sql import SafeSqlDriver
 from .sql import SqlDriver
@@ -684,6 +687,15 @@ async def main():
 
     args = parser.parse_args()
 
+    http_auth = HttpAuthConfig()
+    if args.transport != "stdio":
+        host = args.sse_host if args.transport == "sse" else args.streamable_http_host
+        try:
+            http_auth = HttpAuthConfig.from_env(os.environ)
+            validate_http_deployment(args.transport, host, http_auth)
+        except ValueError as exc:
+            parser.error(str(exc))
+
     global current_access_mode, database_config, registry
     # Configuration errors (including a default database denied by the filters) propagate: never masked.
     database_config = parse_database_config(os.environ, args.database_url, args.access_mode)
@@ -748,11 +760,17 @@ async def main():
         elif args.transport == "sse":
             mcp.settings.host = args.sse_host
             mcp.settings.port = args.sse_port
-            await mcp.run_sse_async()
+            if http_auth.token is not None:
+                await run_authenticated_http(mcp, args.transport, http_auth)
+            else:
+                await mcp.run_sse_async()
         elif args.transport == "streamable-http":
             mcp.settings.host = args.streamable_http_host
             mcp.settings.port = args.streamable_http_port
-            await mcp.run_streamable_http_async()
+            if http_auth.token is not None:
+                await run_authenticated_http(mcp, args.transport, http_auth)
+            else:
+                await mcp.run_streamable_http_async()
     finally:
         if registry is not None:
             await registry.close_all()  # idempotent
