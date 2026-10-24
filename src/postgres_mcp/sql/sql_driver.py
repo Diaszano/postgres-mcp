@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import math
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -15,6 +16,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 from typing_extensions import LiteralString
 
+from ..query_limits.admission import remaining_query_seconds
 from ..security.errors import log_public_error
 
 logger = logging.getLogger(__name__)
@@ -246,6 +248,7 @@ class SqlDriver:
         transaction_started = False
         try:
             async with connection.cursor(row_factory=dict_row) as cursor:
+                remaining = remaining_query_seconds()
                 # Start read-only transaction
                 if force_readonly:
                     transaction_started = True
@@ -253,6 +256,16 @@ class SqlDriver:
                     # BEGIN inside an existing transaction does not change its access mode.
                     await cursor.execute("SET TRANSACTION READ ONLY")
                     await cursor.execute("SET LOCAL search_path = pg_catalog, public, pg_temp")
+                elif remaining is not None:
+                    transaction_started = True
+                    await cursor.execute("BEGIN")
+
+                remaining = remaining_query_seconds()
+                if remaining is not None:
+                    milliseconds = max(1, math.ceil(remaining * 1000))
+                    await cursor.execute("SELECT pg_catalog.set_config('statement_timeout', %s, true)", [str(milliseconds)])
+
+                if force_readonly:
                     from .safe_sql import validate_restricted_function_resolution
 
                     await validate_restricted_function_resolution(cursor, query)
