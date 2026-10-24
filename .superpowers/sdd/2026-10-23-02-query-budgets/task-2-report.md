@@ -54,3 +54,38 @@ uv run --frozen --group dev pytest -q tests/unit
 The policy resolves and validates per-call budgets before driver checkout. This task does not yet apply resolved row or timeout limits to SQL execution; later query execution tasks consume the `QueryLimits` contract. No database or integration test requiring PostgreSQL was run.
 
 Ruff check on changed Python files: passed.
+
+## Round 1 review fix: strict MCP input validation
+
+The registered FastMCP tool previously declared ordinary `int | None` fields. Added `Field(strict=True)` to the `Annotated` types for both budget inputs. The boundary test registers `execute_sql` with FastMCP and calls its `ToolManager.call_tool`, then verifies text, float, and bool inputs fail before the mocked driver is called, while integer and null inputs pass validation and reach the driver.
+
+RED command:
+
+```sh
+uv run --frozen --group dev pytest -q tests/unit/query_limits/test_policy.py::test_registered_tool_rejects_coercive_budget_inputs
+```
+
+Result before the strict annotations:
+
+```text
+Failed: DID NOT RAISE <class 'mcp.server.fastmcp.exceptions.ToolError'>
+1 failed in 0.15s
+```
+
+GREEN boundary test:
+
+```sh
+uv run --frozen --group dev pytest -q tests/unit/query_limits/test_policy.py::test_registered_tool_rejects_coercive_budget_inputs
+.                                                                        [100%]
+1 passed in 0.03s
+```
+
+Regression tests and lint after the fix:
+
+```text
+uv run --frozen --group dev pytest -q tests/unit/query_limits tests/unit/test_multidb_server.py
+85 passed in 0.48s
+
+uv run --frozen --group dev ruff check --output-format concise src/postgres_mcp/server.py tests/unit/query_limits/test_policy.py
+All checks passed!
+```
