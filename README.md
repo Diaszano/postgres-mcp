@@ -343,10 +343,17 @@ uvx postgres-mcp
 | `DATABASE_MAX_POOLS` | `4` | Maximum number of database pools open at the same time. |
 | `DATABASE_POOL_MAX_SIZE` | `2` | Maximum connections per database pool. |
 | `DATABASE_POOL_IDLE_SECONDS` | `600` | Idle time after which an unused pool may be closed. |
+| `DATABASE_QUERY_GUARDRAILS_ENABLED` | `false` | Enables SQL query budgets. Remote transports warn at startup while disabled. |
+| `DATABASE_QUERY_DEFAULT_MAX_ROWS` | `200` | Default maximum rows returned by one query. |
+| `DATABASE_QUERY_HARD_MAX_ROWS` | `5000` | Maximum row limit a tool call may request. |
+| `DATABASE_QUERY_DEFAULT_TIMEOUT_SECONDS` | `15` | Default query timeout in seconds. |
+| `DATABASE_QUERY_HARD_TIMEOUT_SECONDS` | `60` | Maximum timeout a tool call may request. |
+| `DATABASE_QUERY_MAX_RESULT_BYTES` | `2097152` | Maximum serialized result size in bytes; maximum configurable value is 64 MiB. |
+| `DATABASE_QUERY_MAX_CONCURRENCY` | `4` | Maximum concurrent budgeted SQL executions; maximum configurable value is 256. |
 
 Both list variables accept a comma-separated list (`app,testing`, spaces around names are trimmed) or, when the value starts with `[`, a JSON array of strings (`["app", "name,with,comma"]`).
 Use the JSON form for names that contain commas. Names are never lower-cased or otherwise normalized.
-Numeric variables must be integers of at least 1; invalid values stop the server at startup with an error that never includes the URI or password.
+Numeric variables must be integers of at least 1; invalid values stop the server at startup with an error that never includes the URI or password. Query guardrail settings are strict positive integers; default row and timeout values cannot exceed their hard limits. Row limits are capped at 10,000,000 and timeout limits at 3,600 seconds. Guardrails default to disabled during migration.
 
 **What is discoverable.** A database is listed only if it is not a template, accepts connections, the role has `CONNECT` on it, and it passes the allow and deny lists.
 The database in `DATABASE_URI` is only the bootstrap connection: it is not special.
