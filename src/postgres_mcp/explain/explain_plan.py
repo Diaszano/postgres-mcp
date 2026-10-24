@@ -202,13 +202,14 @@ class ExplainPlanTool:
         Returns:
             The explain plan as a dictionary
         """
+        failed = False
         try:
-            # Create the indexes query
-            create_indexes_query = "SELECT hypopg_reset();"
-            if len(indexes) > 0:
-                create_indexes_query += SafeSqlDriver.param_sql_to_query(
-                    "SELECT hypopg_create_index({});" * len(indexes),
-                    [idx.definition for idx in indexes],
+            await self.sql_driver.execute_query("SELECT hypopg_reset();")
+            for index in indexes:
+                await SafeSqlDriver.execute_param_query(
+                    self.sql_driver,
+                    "SELECT hypopg_create_index({});",
+                    [index.definition],
                 )
 
             # Execute explain with the indexes
@@ -218,7 +219,7 @@ class ExplainPlanTool:
             if indexes:
                 explain_options.append("COSTS TRUE")
 
-            explain_plan_query = f"{create_indexes_query}EXPLAIN ({', '.join(explain_options)}) {query_text}"
+            explain_plan_query = f"EXPLAIN ({', '.join(explain_options)}) {query_text}"
             plan_result = await self.sql_driver.execute_query(explain_plan_query)  # type: ignore
 
             # Extract the plan
@@ -235,6 +236,22 @@ class ExplainPlanTool:
             # Return empty plan if no result
             return {"Plan": {"Total Cost": float("inf")}}
 
-        except Exception as e:
-            log_public_error(logger, "generate_explain_plan_with_indexes", e)
-            raise e
+        except BaseException as e:
+            failed = True
+            if isinstance(e, Exception):
+                log_public_error(logger, "generate_explain_plan_with_indexes", e)
+            raise
+        finally:
+            try:
+                await self.sql_driver.execute_query("SELECT hypopg_reset();")
+            except BaseException as reset_error:
+                log_public_error(logger, "reset_hypothetical_indexes", reset_error)
+                driver = self.sql_driver.sql_driver if isinstance(self.sql_driver, SafeSqlDriver) else self.sql_driver
+                if not driver.owns_transaction and driver.conn is not None:
+                    # Rollback cannot clear HypoPG session state after a failed reset.
+                    try:
+                        await driver.conn.close()
+                    except Exception as close_error:
+                        log_public_error(logger, "close_hypothetical_index_session", close_error)
+                if not failed:
+                    raise

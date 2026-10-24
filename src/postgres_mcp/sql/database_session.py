@@ -38,6 +38,8 @@ async def database_session(
         connection = await stack.enter_async_context(physical_pool.connection())
 
         async def rollback() -> None:
+            if connection.closed:
+                return
             try:
                 await connection.rollback()
             except BaseException:
