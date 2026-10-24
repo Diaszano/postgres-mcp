@@ -587,7 +587,14 @@ async def analyze_workload_indexes(
 ) -> ResponseType:
     """Analyze frequently executed queries in the database and recommend optimal indexes."""
     try:
-        async with get_sql_driver(database) as sql_driver:
+        driver_context = (
+            database_session(database, restricted=current_access_mode == AccessMode.RESTRICTED, registry=registry, bootstrap_pool=db_connection)
+            if method == "dta"
+            else get_sql_driver(database)
+        )
+        async with driver_context as sql_driver:
+            if method == "dta" and current_access_mode == AccessMode.RESTRICTED:
+                sql_driver = SafeSqlDriver(sql_driver=sql_driver, timeout=30)
             if method == "dta":
                 index_tuning = DatabaseTuningAdvisor(sql_driver)
             else:
@@ -620,7 +627,14 @@ async def analyze_query_indexes(
         return format_error_response(f"Please provide a list of up to {MAX_NUM_INDEX_TUNING_QUERIES} queries to analyze.")
 
     try:
-        async with get_sql_driver(database) as sql_driver:
+        driver_context = (
+            database_session(database, restricted=current_access_mode == AccessMode.RESTRICTED, registry=registry, bootstrap_pool=db_connection)
+            if method == "dta"
+            else get_sql_driver(database)
+        )
+        async with driver_context as sql_driver:
+            if method == "dta" and current_access_mode == AccessMode.RESTRICTED:
+                sql_driver = SafeSqlDriver(sql_driver=sql_driver, timeout=30)
             if method == "dta":
                 index_tuning = DatabaseTuningAdvisor(sql_driver)
             else:

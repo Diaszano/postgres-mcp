@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import time
@@ -225,11 +226,14 @@ class IndexTuningBase(ABC):
             budget_mb=max_index_size_mb,
         )
 
+        hypopg_ready = False
+        failed = False
         try:
             # Run pre-checks
             precheck_result = await self._run_prechecks(session)
             if precheck_result:
                 return precheck_result
+            hypopg_ready = True
 
             # First try to use explicit workload if provided
             if workload:
@@ -283,15 +287,45 @@ class IndexTuningBase(ABC):
                 recommendations: tuple[set[IndexRecommendation], float] = await self._generate_recommendations(query_weights)
                 session.recommendations = await self._format_recommendations(query_weights, recommendations)
 
-                # Reset HypoPG only once at the end
-                await self.sql_driver.execute_query("SELECT hypopg_reset();")
-
-        except Exception as e:
+        except BaseException as e:
+            failed = True
+            if not isinstance(e, Exception):
+                raise
             log_public_error(logger, "analyze_workload", e)
             session.error = to_public_error(e).message
+        finally:
+            if hypopg_ready:
+                cleanup = asyncio.create_task(self._reset_hypopg(failed))
+                cancelled = False
+                while not cleanup.done():
+                    try:
+                        await asyncio.shield(cleanup)
+                    except asyncio.CancelledError:
+                        cancelled = True
+                    except Exception:
+                        break
+                if cancelled:
+                    cleanup.exception()
+                    raise asyncio.CancelledError
+                cleanup.result()
 
         session.dta_traces = self._dta_traces
         return session
+
+    async def _reset_hypopg(self, failed: bool) -> None:
+        try:
+            await self.sql_driver.execute_query("SELECT hypopg_reset();")
+        except BaseException as reset_error:
+            log_public_error(logger, "reset_tuning_indexes", reset_error)
+            driver = self.sql_driver.sql_driver if isinstance(self.sql_driver, SafeSqlDriver) else self.sql_driver
+            if not driver.owns_transaction and driver.conn is not None:
+                # Rollback cannot clear HypoPG session state after a failed reset.
+                try:
+                    await driver.conn.close()
+                except Exception as close_error:
+                    log_public_error(logger, "close_tuning_session", close_error)
+            if not failed:
+                raise
 
     async def _run_prechecks(self, session: IndexTuningResult) -> IndexTuningResult | None:
         """
