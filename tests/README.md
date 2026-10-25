@@ -37,7 +37,7 @@ uv run --frozen --group dev pytest tests/unit/test_db_conn_pool.py::test_pool_co
 
 - Databases: `app_development`, `app_testing`, `analytics` (visible) and `blocked_db` (`CONNECT` revoked from `PUBLIC` and from the MCP role). Each visible database has its own marker table.
 - Role: `mcp_test_role` is not a superuser and has no `CREATEDB`. DDL, grants and `REVOKE` run only through the fixture's admin connection, inside the container.
-- Image: `postgres-hypopg:16` if present locally (build it with `tests/utils.py` runs), otherwise `postgres:16`. Override with `MULTIDB_PG_IMAGE`. `pg_stat_statements` exists only in `app_development`. Tests that need `hypopg` skip individually when the image lacks it.
+- Image: `postgres-hypopg:16` (or `MULTIDB_PG_IMAGE` override). The test harness strictly requires HypoPG; missing Docker or extension is an explicit failure, never a silent skip or fallback. `pg_stat_statements` exists only in `app_development`.
 
 ```bash
 uv run --frozen --group dev pytest -q tests/integration/test_multi_database_integration.py
