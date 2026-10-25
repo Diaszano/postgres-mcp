@@ -35,9 +35,11 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
+ARG REVISION
 LABEL org.opencontainers.image.title="Postgres MCP"
 LABEL org.opencontainers.image.description="Postgres MCP Server with Security Hardening, Query Budgets and Pagination (${TARGETPLATFORM})"
-LABEL org.opencontainers.image.source="https://github.com/crystaldba/postgres-mcp"
+LABEL org.opencontainers.image.source="https://github.com/diaszano/postgres-mcp"
+LABEL org.opencontainers.image.revision="${REVISION}"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.authors="Johann Schleier-Smith <jssmith@crystal.cloud>"
 LABEL org.opencontainers.image.vendor="Crystal DBA"
