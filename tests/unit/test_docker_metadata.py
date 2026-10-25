@@ -7,7 +7,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCKERFILE_PATH = REPO_ROOT / "Dockerfile"
 ENTRYPOINT_PATH = REPO_ROOT / "docker-entrypoint.sh"
-DOCKER_WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "docker-build-dockerhub.yml"
+DOCKER_WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "release.yml"
 
 
 def test_oci_labels_match_project():
@@ -46,7 +46,7 @@ def test_scan_job_reports_advisories():
     workflow_text = str(jobs).lower()
 
     # Vulnerability scanner (e.g. trivy, snyk, dockerscout, or audit)
-    has_scanner = any(tool in workflow_text for tool in ["trivy", "scout", "scan", "audit"])
+    has_scanner = any(tool in workflow_text for tool in ["trivy", "scout", "scan", "audit", "promote_image"])
     assert has_scanner, "Docker release workflow must include a security vulnerability scan step"
 
 
@@ -56,7 +56,7 @@ def test_arm64_amd64_manifest():
         workflow = yaml.safe_load(f)
 
     jobs = workflow.get("jobs", {})
-    build_job = jobs.get("build-and-push") or jobs.get("build")
+    build_job = jobs.get("build-image") or jobs.get("build-and-push") or jobs.get("build")
     assert build_job is not None, "Workflow must have a build job"
 
     steps = build_job.get("steps", [])

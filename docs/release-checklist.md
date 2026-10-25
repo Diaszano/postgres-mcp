@@ -1,6 +1,6 @@
 # PostgreSQL MCP Release Checklist & Rollback Procedure
 
-Base Version: Evaluated dynamically from `pyproject.toml`
+Base Version: `0.3.0` (evaluated dynamically from `pyproject.toml`)
 Primary Image Registry: `ghcr.io/diaszano/postgres-mcp`
 Release Automation: Python Semantic Release (PSR 10.7.0) via GitHub Actions
 
