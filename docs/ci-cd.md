@@ -70,3 +70,29 @@ In rare scenarios where Python Semantic Release successfully tags a release and 
 2. Navigate to Actions -> **Retry Publish** workflow (`.github/workflows/retry-publish.yml`).
 3. Click **Run workflow**, enter the existing verified tag (e.g. `v0.3.0`), and submit.
 4. The workflow verifies the commit ancestry and `pyproject.toml` version using `scripts/ci/validate_release_ref.py`, builds the staging image from the exact release commit, scans both architectures with Trivy, and promotes the missing aliases to GHCR without bumping version numbers.
+
+## 5. End-to-End Delivery Verification & Handoff
+
+Before merging any change to `main` or tagging production versions, the full suite of automated verification gates must pass:
+
+- **Repository Hygiene & Conventions**:
+  - `uv run pytest -q tests/release/test_repository_conventions.py`
+  - `uv run pytest -q tests/release/test_dependabot_config.py`
+  - `uv run pytest -q tests/release/test_pr_metadata.py`
+- **Code Quality & Static Analysis**:
+  - `uv lock --check`
+  - `uv run ruff check .`
+  - `uv run ruff format --check .`
+  - `uv run pyright`
+- **Testing Layers**:
+  - `uv run pytest -q tests/unit`
+  - `uv run pytest -q tests/release`
+  - `uv run pytest -q tests/integration` (PostgreSQL 16 & 17 HypoPG containers)
+- **Artifact Build Verification**:
+  - `uv build` (producing valid wheel and sdist)
+  - `docker buildx build --platform linux/amd64,linux/arm64 .`
+- **Security & Attestation Invariants**:
+  - Pinned GitHub Actions commit SHAs in `.github/workflows/*.yml`
+  - Fail-closed Trivy container vulnerability scanner
+  - Immutable SHA256 digest promotion without floating-tag race conditions
+
