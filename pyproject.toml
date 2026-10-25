@@ -110,6 +110,7 @@ commit_parser = "conventional"
 allow_zero_version = true
 major_on_zero = false
 commit_message = "chore(release): {version} [skip ci]"
+build_command = "bash scripts/release/build.sh"
 
 [tool.semantic_release.branches.main]
 match = "(main|master)"
