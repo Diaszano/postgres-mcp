@@ -39,11 +39,11 @@
 
 **Interfaces:** `_default_factory(name: str) -> DbConnPool` consumes `DatabaseConfig.pool_max_size` for `DbConnPool.max_size`; `DatabaseConfig.max_pools` remains the registry entry limit.
 
-- [ ] Add `test_default_factory_uses_pool_max_size`: create a config with `max_pools=8` and `pool_max_size=5`, replace `database_registry.DbConnPool` with a mock, call `_default_factory("app_testing")`, and assert `min_size=0` and `max_size=5` in the constructor call.
-- [ ] Run `uv run --python 3.12 --group dev pytest tests/unit/sql/test_database_registry.py::test_default_factory_uses_pool_max_size -q`; expect failure showing `max_size=8`.
-- [ ] Change `_default_factory` to pass `self._config.pool_max_size` as `max_size`.
-- [ ] Run the same test; expect one pass.
-- [ ] Commit the two files as `fix: honor per-database pool size`.
+- [x] Add `test_default_factory_uses_pool_max_size`: create a config with `max_pools=8` and `pool_max_size=5`, replace `database_registry.DbConnPool` with a mock, call `_default_factory("app_testing")`, and assert `min_size=0` and `max_size=5` in the constructor call.
+- [x] Run `uv run --python 3.12 --group dev pytest tests/unit/sql/test_database_registry.py::test_default_factory_uses_pool_max_size -q`; expect failure showing `max_size=8`.
+- [x] Change `_default_factory` to pass `self._config.pool_max_size` as `max_size`.
+- [x] Run the same test; expect one pass.
+- [x] Commit the two files as `fix: honor per-database pool size`.
 
 ### Task 2: Recheck authorization after a catalog refresh
 
@@ -51,16 +51,16 @@
 
 **Interfaces:** `acquire(database: str | None = None)` must raise the same `ValueError("Database <name> is not available")` as `DatabaseCatalog.authorize()` when the second `names()` result omits the requested name. It must not call `_lease()` in that case.
 
-- [ ] Add a parametrized `test_refresh_revocation_blocks_new_lease` for `already_open=False/True`: arrange an authorized first read and a second `names()` result excluding `app_development`; assert the new `acquire("app_development")` raises `ValueError`, does not create a pool when closed, and does not increase `active_leases` when open.
-- [ ] Run `uv run --python 3.12 --group dev pytest tests/unit/sql/test_database_registry.py::test_refresh_revocation_blocks_new_lease -q`; expect both cases to fail because `acquire()` proceeds to `_lease()`.
-- [ ] In `acquire()`, after the second `names()` call and before `_lease()`, reject `name` when it is absent from `names`; retain the existing `_sweep()` behavior for revoked pools.
-- [ ] Run `uv run --python 3.12 --group dev pytest tests/unit/sql/test_database_registry.py -q`; expect all registry tests to pass, including the new cases and existing revocation tests.
-- [ ] Commit the two files as `fix: reject databases revoked during acquisition`.
+- [x] Add a parametrized `test_refresh_revocation_blocks_new_lease` for `already_open=False/True`: arrange an authorized first read and a second `names()` result excluding `app_development`; assert the new `acquire("app_development")` raises `ValueError`, does not create a pool when closed, and does not increase `active_leases` when open.
+- [x] Run `uv run --python 3.12 --group dev pytest tests/unit/sql/test_database_registry.py::test_refresh_revocation_blocks_new_lease -q`; expect both cases to fail because `acquire()` proceeds to `_lease()`.
+- [x] In `acquire()`, after the second `names()` call and before `_lease()`, reject `name` when it is absent from `names`; retain the existing `_sweep()` behavior for revoked pools.
+- [x] Run `uv run --python 3.12 --group dev pytest tests/unit/sql/test_database_registry.py -q`; expect all registry tests to pass, including the new cases and existing revocation tests.
+- [x] Commit the two files as `fix: reject databases revoked during acquisition`.
 
 ### Task 3: Verify the branch
 
 **Files:** No changes expected.
 
-- [ ] Run `uv run --python 3.12 --group dev pytest tests/unit/sql/test_database_catalog.py tests/unit/sql/test_database_registry.py tests/unit/test_multidb_server.py -q`; expect all tests to pass.
-- [ ] Run `git diff --check main...HEAD` and `git status --short`; expect no whitespace errors and only intended changes.
-- [ ] If `uv` still cannot resolve `pglast==7.11` in this environment, record the dependency blocker and do not report the tests as passing.
+- [x] Run `uv run --python 3.12 --group dev pytest tests/unit/sql/test_database_catalog.py tests/unit/sql/test_database_registry.py tests/unit/test_multidb_server.py -q`; expect all tests to pass.
+- [x] Run `git diff --check main...HEAD` and `git status --short`; expect no whitespace errors and only intended changes.
+- [x] If `uv` still cannot resolve `pglast==7.11` in this environment, record the dependency blocker and do not report the tests as passing.
