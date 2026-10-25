@@ -48,7 +48,7 @@ class _Entry:
 class InMemoryCursorStore:
     """Keep at most 100 cursors for 300 seconds; each instance is a stdio session.
 
-    Oldest issued entries, including outstanding reservations, may be evicted.
+    Oldest unreserved entries may be evicted; a fully reserved store is busy.
     A forked process must create its own store before issuing or consuming tokens.
     """
 
@@ -62,17 +62,22 @@ class InMemoryCursorStore:
         if os.getpid() != self._process_id:
             raise PublicToolError("CURSOR_INVALID", "The query cursor is invalid.")
 
-    def _issue(self, state: CursorState) -> str:
+    def _issue(self, state: CursorState, *, replacing: str | None = None) -> str:
         now = self._clock()
-        for key in [key for key, entry in self._entries.items() if entry.expires_at <= now]:
+        for key in [key for key, entry in self._entries.items() if entry.expires_at <= now and key != replacing]:
             del self._entries[key]
+        evicted_key = replacing
+        if replacing is None and len(self._entries) >= 100:
+            evicted_key = next((key for key, entry in self._entries.items() if entry.reservation is None), None)
+            if evicted_key is None:
+                raise PublicToolError("CURSOR_BUSY", "The query cursor store is busy.", retryable=True)
         while True:
             token = secrets.token_urlsafe(32)
             key = sha256(token.encode()).hexdigest()
             if key not in self._entries:
                 break
-        if len(self._entries) >= 100:
-            del self._entries[next(iter(self._entries))]
+        if evicted_key is not None:
+            del self._entries[evicted_key]
         self._entries[key] = _Entry(state, now + 300)
         return token
 
@@ -109,8 +114,10 @@ class InMemoryCursorStore:
             entry = self._entry(reservation.token_digest)
             if entry.reservation is not reservation or (next_state is not None and next_state.principal != entry.state.principal):
                 raise PublicToolError("CURSOR_INVALID", "The query cursor is invalid.")
+            if next_state is not None:
+                return self._issue(next_state, replacing=reservation.token_digest)
             del self._entries[reservation.token_digest]
-            return self._issue(next_state) if next_state is not None else None
+            return None
 
     def release_on_error(self, reservation: CursorReservation) -> None:
         with self._lock:

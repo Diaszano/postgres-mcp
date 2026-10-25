@@ -221,3 +221,62 @@ def test_token_collision_does_not_overwrite_cursor(cursors, state, monkeypatch):
     assert store.issue(replace(state, offset=100)) == "A" * 43
     assert store.reserve(first, "alice").state == state
     assert store.reserve(second, "alice").state == state
+
+
+def test_capacity_eviction_preserves_reserved_cursor(cursors, state):
+    store = cursors.InMemoryCursorStore()
+    tokens = [store.issue(state) for _ in range(100)]
+    reservation = store.reserve(tokens[0], "alice")
+    newest = store.issue(state)
+    assert len(store._entries) == 100
+    with pytest.raises(PublicToolError) as evicted:
+        store.reserve(tokens[1], "alice")
+    assert evicted.value.code == "CURSOR_INVALID"
+    assert store.commit(reservation, None) is None
+    assert store.reserve(newest, "alice").state == state
+
+
+def test_full_reserved_capacity_rejects_issue_without_eviction(cursors, state):
+    store = cursors.InMemoryCursorStore()
+    tokens = [store.issue(state) for _ in range(100)]
+    reservations = [store.reserve(token, "alice") for token in tokens]
+    with pytest.raises(PublicToolError) as busy:
+        store.issue(state)
+    assert busy.value.code == "CURSOR_BUSY"
+    assert busy.value.retryable is True
+    assert len(store._entries) == 100
+    for reservation in reservations[:-1]:
+        assert store.commit(reservation, None) is None
+    store.release_on_error(reservations[-1])
+    assert store.reserve(tokens[-1], "alice").state == state
+
+
+def test_commit_replaces_reserved_slot_at_full_capacity(cursors, state):
+    store = cursors.InMemoryCursorStore()
+    tokens = [store.issue(state) for _ in range(100)]
+    reservations = [store.reserve(token, "alice") for token in tokens]
+    next_state = replace(state, offset=100, total_returned_rows=100)
+    successor = store.commit(reservations[0], next_state)
+    assert len(store._entries) == 100
+    assert successor != tokens[0]
+    with pytest.raises(PublicToolError) as consumed:
+        store.reserve(tokens[0], "alice")
+    assert consumed.value.code == "CURSOR_INVALID"
+    assert store.reserve(successor, "alice").state == next_state
+    for reservation in reservations[1:]:
+        assert store.commit(reservation, None) is None
+
+
+def test_failed_successor_issuance_preserves_reservation(cursors, state, monkeypatch):
+    store = cursors.InMemoryCursorStore()
+    token = store.issue(state)
+    reservation = store.reserve(token, "alice")
+
+    def unavailable_randomness(_):
+        raise RuntimeError("random source unavailable")
+
+    monkeypatch.setattr(cursors.secrets, "token_urlsafe", unavailable_randomness)
+    with pytest.raises(RuntimeError, match="random source unavailable"):
+        store.commit(reservation, replace(state, offset=100))
+    store.release_on_error(reservation)
+    assert store.reserve(token, "alice").state == state
