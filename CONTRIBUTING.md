@@ -67,3 +67,14 @@ Breaking changes must indicate breaking impact using `!` immediately preceding t
    ```
 3. **Squash Merge Strategy**: All pull requests are integrated into `main` using **Squash and Merge**. This ensures that each feature or fix represents a clean, atomic commit with semantic history on the mainline.
 4. **Code Ownership & Review**: Critical paths (`.github/workflows/`, `scripts/ci/`, `pyproject.toml`) require approval from maintainers designated in [`.github/CODEOWNERS`](.github/CODEOWNERS).
+
+---
+
+## 5. Automated Dependency Updates (Dependabot)
+
+- Dependabot is configured via [`.github/dependabot.yml`](.github/dependabot.yml) to generate weekly update pull requests for:
+  - Python / uv dependencies (`package-ecosystem: uv`)
+  - GitHub Actions reusable workflows and actions (`package-ecosystem: github-actions`)
+  - Docker base images (`package-ecosystem: docker`)
+- Automated dependency branches follow `dependabot/<ecosystem>/<package>-<version>`.
+- All Dependabot pull requests require full CI test suite verification and maintainer review before merging.
