@@ -21,6 +21,9 @@ test-integration:
 build:
   uv build
 
+release-smoke:
+  uv run pytest -q tests/release/test_smoke.py
+
 dev:
   uv run mcp dev -e . src/postgres_mcp/server.py
 
