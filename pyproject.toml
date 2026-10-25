@@ -102,3 +102,15 @@ reportMissingTypeArgument = true
 reportInvalidTypeVarUse = true
 reportUnnecessaryCast = true
 # reportUnnecessaryComparison = true
+
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+tag_format = "v{version}"
+commit_parser = "conventional"
+allow_zero_version = true
+major_on_zero = false
+commit_message = "chore(release): {version} [skip ci]"
+
+[tool.semantic_release.branches.main]
+match = "(main|master)"
+prerelease = false
