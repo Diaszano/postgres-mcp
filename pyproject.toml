@@ -28,7 +28,7 @@ build-backend = "hatchling.build"
 postgres-mcp = "postgres_mcp:main"
 
 [tool.pytest.ini_options]
-pythonpath = ["./src"]
+pythonpath = [".", "./src"]
 asyncio_default_fixture_loop_scope = "function"
 
 [dependency-groups]
@@ -37,6 +37,7 @@ dev = [
     "pyright==1.1.408",
     "pytest-asyncio>=1.3.0",
     "pytest>=9.0.2",
+    "pyyaml>=6.0.2",
     "ruff==0.14.13",
 ]
 
@@ -101,3 +102,16 @@ reportMissingTypeArgument = true
 reportInvalidTypeVarUse = true
 reportUnnecessaryCast = true
 # reportUnnecessaryComparison = true
+
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+tag_format = "v{version}"
+commit_parser = "conventional"
+allow_zero_version = true
+major_on_zero = false
+commit_message = "chore(release): {version} [skip ci]"
+build_command = "bash scripts/release/build.sh"
+
+[tool.semantic_release.branches.main]
+match = "(main|master)"
+prerelease = false

@@ -61,3 +61,14 @@ When running with HTTP / SSE transport (`--transport=sse` or `--transport=stream
 - Run behind a TLS-terminating reverse proxy (e.g. Nginx, Envoy, Cloudflare).
 - Enforce authentication on all remote HTTP endpoints. Anonymous ingress is strictly prohibited in production.
 - Keep `DATABASE_METRICS_ENABLED=true` bound to loopback or protected administrative networks.
+
+## 6. Supply Chain Security and GHCR Artifact Integrity
+
+All container images and release artifacts published to GitHub Container Registry (GHCR) adhere to strict supply chain security standards:
+
+- **GHCR Provenance & SLSA Attestations**: Container builds generate cryptographic SLSA provenance attestations linked to GitHub release commits.
+- **SBOM Generation**: Each image release attaches a Software Bill of Materials (SBOM) in standard SPDX format, detailing exact dependency trees and licenses.
+- **Immutable Digest Promotion**: Production promotion relies exclusively on immutable `sha256:[a-f0-9]{64}` image digests from staging builds, eliminating floating tag race conditions.
+- **Action Pinning & Least Privilege**: CI/CD pipelines use explicit read-only token permissions (`contents: read`) and pin all third-party GitHub Actions to 40-character commit SHAs.
+- **Continuous Vulnerability Scanning**: Fail-closed container vulnerability scans run on multi-arch images before promotion, blocking deployments on HIGH or CRITICAL findings.
+

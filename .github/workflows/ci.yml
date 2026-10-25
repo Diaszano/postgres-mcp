@@ -1,0 +1,211 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - "feature/**"
+      - "bugfix/**"
+      - "hotfix/**"
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  conventions:
+    name: Validate PR Conventions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1edb5128c8234b1629858593333066d213988fb3 # v5.3.0
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Validate PR metadata
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_HEAD_REF: ${{ github.head_ref }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: |
+          uv run python scripts/ci/check_pr_metadata.py
+
+  lint:
+    name: Lint & Code Style
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1edb5128c8234b1629858593333066d213988fb3 # v5.3.0
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Check lockfile consistency
+        run: uv lock --check
+
+      - name: Run Ruff Linter
+        run: uv run ruff check .
+
+      - name: Run Ruff Format Check
+        run: uv run ruff format --check .
+
+  typecheck:
+    name: Static Type Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1edb5128c8234b1629858593333066d213988fb3 # v5.3.0
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --locked --group dev
+
+      - name: Run Pyright
+        run: uv run pyright
+
+  unit:
+    name: Unit & Release Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1edb5128c8234b1629858593333066d213988fb3 # v5.3.0
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --locked --group dev
+
+      - name: Run Unit and Release test suites
+        env:
+          NO_PROXY: "*"
+          no_proxy: "*"
+        run: |
+          uv run pytest -q tests/unit tests/release
+
+  package:
+    name: Package Build & Version Gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1edb5128c8234b1629858593333066d213988fb3 # v5.3.0
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Verify package version metadata
+        run: uv run python scripts/ci/check_version.py
+
+      - name: Build wheel and sdist
+        run: uv build
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        with:
+          name: dist-artifacts
+          path: dist/
+          retention-days: 1
+
+  integration:
+    name: Integration (PG ${{ matrix.postgres-version }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    continue-on-error: ${{ matrix.experimental == true }}
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres-version: ["16", "17"]
+        experimental: [false]
+        include:
+          - postgres-version: "18"
+            experimental: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1edb5128c8234b1629858593333066d213988fb3 # v5.3.0
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --locked --group dev
+
+      - name: Build PostgreSQL container image with HypoPG
+        run: bash scripts/ci/build_hypopg_image.sh ${{ matrix.postgres-version }}
+
+      - name: Run Integration test suite
+        env:
+          MULTIDB_PG_IMAGE: "postgres-hypopg:${{ matrix.postgres-version }}"
+          NO_PROXY: "*"
+          no_proxy: "*"
+        run: |
+          uv run pytest -q tests/integration
+
+  release:
+    name: Delivery Handoff Gate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - conventions
+      - lint
+      - typecheck
+      - unit
+      - package
+      - integration
+    uses: ./.github/workflows/release.yml
+    secrets: inherit

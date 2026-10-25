@@ -1,0 +1,9 @@
+# Global ownership fallback
+* @Diaszano
+
+# Critical CI/CD workflows and release automation
+.github/workflows/ @Diaszano
+scripts/ci/ @Diaszano
+pyproject.toml @Diaszano
+Dockerfile @Diaszano
+.dockerignore @Diaszano

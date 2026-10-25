@@ -1,0 +1,40 @@
+name: Bug Report
+description: Report an issue or bug with postgres-mcp
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this issue!
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Steps or minimal SQL query / MCP call to reproduce the behavior.
+      placeholder: |
+        1. Connect to PostgreSQL server
+        2. Run tool '...' with arguments '...'
+        3. See error
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, PostgreSQL version, and postgres-mcp version.
+      placeholder: "Linux, Python 3.12, PostgreSQL 16, postgres-mcp 0.3.0"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs or Stack Traces
+      description: Paste any relevant console or server logs here.
+      render: shell
