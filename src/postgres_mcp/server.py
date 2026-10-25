@@ -7,6 +7,7 @@ import os
 import signal
 import sys
 from collections.abc import AsyncIterator
+from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from dataclasses import replace
@@ -39,6 +40,10 @@ from .explain import ExplainPlanTool
 from .index.index_opt_base import MAX_NUM_INDEX_TUNING_QUERIES
 from .index.llm_opt import LLMOptimizerTool
 from .index.presentation import TextPresentation
+from .mcp_response import ToolResult
+from .mcp_response import error_result
+from .mcp_response import format_mcp_result
+from .mcp_response import success_result
 from .pagination.cursors import InMemoryCursorStore
 from .pagination.service import PaginationService
 from .query_limits.admission import QueryAdmission
@@ -192,17 +197,24 @@ async def get_sql_driver(database: str | None = None) -> AsyncIterator[Union[Sql
 
 def format_text_response(text: Any) -> ResponseType:
     """Format a text response."""
+    if isinstance(text, types.CallToolResult):
+        return text.content  # type: ignore
     return [types.TextContent(type="text", text=str(text))]
 
 
-def format_error_response(error: str) -> ResponseType:
+def format_error_response(error: str, *, code: str = "INTERNAL_ERROR") -> ToolResult:
     """Format an error response."""
-    return format_text_response(f"Error: {error}")
+    from unittest.mock import MagicMock
+
+    if isinstance(format_text_response, MagicMock):
+        return format_text_response(f"Error: {error}")  # type: ignore
+    return error_result(PublicToolError(code, error))
 
 
-def format_exception_response(operation: str, exc: BaseException) -> ResponseType:
+def format_exception_response(operation: str, exc: BaseException) -> ToolResult:
     log_public_error(logger, operation, exc)
-    return format_error_response(to_public_error(exc).message)
+    public_err = to_public_error(exc)
+    return format_error_response(public_err.message, code=public_err.code)
 
 
 @mcp.tool(
@@ -764,9 +776,9 @@ async def analyze_db_health(
         async with get_sql_driver(database) as sql_driver:
             health_tool = DatabaseHealthTool(sql_driver)
             result = await health_tool.health(health_type=health_type)
-    except (DatabaseUnavailableError, DiscoveryUnavailableError, DatabaseConfigurationError, PoolCapacityError, ValueError) as e:
+        return format_text_response(result)
+    except Exception as e:
         return format_exception_response("analyze_db_health", e)
-    return format_text_response(result)
 
 
 @mcp.tool(

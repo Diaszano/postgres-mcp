@@ -37,8 +37,8 @@ def test_error_result_content_and_structured():
         }
     }
     assert len(res.content) == 1
-    assert "DATABASE_NOT_ALLOWED" in res.content[0].text
     assert "Access denied" in res.content[0].text
+    assert res.structuredContent["error"]["code"] == "DATABASE_NOT_ALLOWED"
 
 
 def test_format_mcp_result_from_exception():

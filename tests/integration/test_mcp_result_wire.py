@@ -29,7 +29,7 @@ async def test_tool_error_is_error_on_wire():
         assert res.structuredContent["error"]["retryable"] is True
         assert res.structuredContent["error"]["request_id"] == "trace-abc"
         assert len(res.content) >= 1
-        assert "POOL_CAPACITY_EXCEEDED" in res.content[0].text
+        assert "The database connection pool is at capacity." in res.content[0].text
 
 
 @pytest.mark.asyncio
