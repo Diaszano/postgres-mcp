@@ -72,6 +72,27 @@ def calculate_next_version(current_version: str, commit_messages: list[str], maj
     return None
 
 
+def validate_release_baseline(project_version: str, reachable_tags: list[str]) -> None:
+    """Validate git reachable tags against project version to ensure idempotent bootstrap."""
+    if len(reachable_tags) != len(set(reachable_tags)):
+        raise ValueError("Duplicate release tags detected in repository history.")
+
+    proj_parts = tuple(int(p) for p in project_version.strip().split("."))
+    if len(proj_parts) != 3:
+        raise ValueError(f"Invalid project SemVer: {project_version}")
+
+    for tag in reachable_tags:
+        clean_tag = tag.strip()
+        if not STRICT_RELEASE_TAG_REGEX.match(clean_tag):
+            raise ValueError(f"Invalid tag format in release history: '{tag}'")
+
+        tag_parts = tuple(int(p) for p in clean_tag[1:].split("."))
+        if tag_parts > proj_parts:
+            raise ValueError(
+                f"Reachable tag '{tag}' is ahead of project version '{project_version}'. Ensure local branch is aligned with the latest release."
+            )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate release tag and SemVer rules.")
     parser.add_argument("--tag", required=True, help="Release tag to validate (e.g., v0.3.0)")
