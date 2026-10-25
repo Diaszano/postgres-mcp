@@ -39,7 +39,10 @@ class AppRuntime:
         self.shutdown_in_progress = True
         self.cursor_store.invalidate_all()
         if self.registry is not None:
-            await self.registry.close()
+            if hasattr(self.registry, "close"):
+                await self.registry.close()
+            elif hasattr(self.registry, "close_all"):
+                await self.registry.close_all()
         if self.db_connection is not None:
             if hasattr(self.db_connection, "close"):
                 await self.db_connection.close()

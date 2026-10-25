@@ -1,7 +1,7 @@
 """Standardized MCP tool results with structured content and text fallbacks."""
 
-from collections.abc import Mapping
 import json
+from collections.abc import Mapping
 from typing import Any
 
 from mcp import types

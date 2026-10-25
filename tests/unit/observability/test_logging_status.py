@@ -1,5 +1,6 @@
 import asyncio
 import logging
+
 import pytest
 
 from postgres_mcp.observability.logging import get_operation_id

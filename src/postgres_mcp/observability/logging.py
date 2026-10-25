@@ -1,7 +1,7 @@
 """Context-propagated request tracing and sanitized logging helpers."""
 
-from contextlib import contextmanager
 import contextvars
+from contextlib import contextmanager
 from typing import Iterator
 
 _OPERATION_ID_CTX: contextvars.ContextVar[str | None] = contextvars.ContextVar("operation_id", default=None)

@@ -1,5 +1,6 @@
 import time
 import tracemalloc
+
 import pytest
 
 from postgres_mcp.observability.metrics import NoopMetrics

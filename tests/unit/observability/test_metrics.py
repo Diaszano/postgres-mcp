@@ -1,6 +1,3 @@
-import pytest
-
-from postgres_mcp.observability.metrics import MetricsSink
 from postgres_mcp.observability.metrics import NoopMetrics
 from postgres_mcp.observability.metrics import SimpleMetrics
 from postgres_mcp.observability.metrics import get_metrics_sink
@@ -32,7 +29,7 @@ def test_prometheus_labels_are_allowlisted():
 def test_instrumentation_cardinality_fixed():
     metrics = SimpleMetrics(enabled=True)
     # Simulate 1000 different databases / callers
-    for i in range(1000):
+    for _ in range(1000):
         metrics.record_query(duration_seconds=0.01, outcome="success", mode="restricted")
         metrics.record_cursor(action="issue")
 

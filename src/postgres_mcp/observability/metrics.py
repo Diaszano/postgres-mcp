@@ -1,8 +1,7 @@
 """Low-cardinality operational metrics sink and adapters."""
 
-from collections import defaultdict
 import os
-from typing import Any
+from collections import defaultdict
 from typing import Protocol
 
 

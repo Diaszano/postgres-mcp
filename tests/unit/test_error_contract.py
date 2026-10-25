@@ -1,18 +1,15 @@
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
+
 import pytest
 from mcp import types
 
-from postgres_mcp.security.errors import DatabaseNotAllowedError
 from postgres_mcp.security.errors import SQLValidationError
-from postgres_mcp.sql.database_registry import PoolCapacityError
-from postgres_mcp.server import AccessMode
 from postgres_mcp.server import analyze_db_health
 from postgres_mcp.server import execute_sql
-from postgres_mcp.server import list_databases
-from postgres_mcp.server import list_schemas
 from postgres_mcp.server import mcp
+from postgres_mcp.sql.database_registry import PoolCapacityError
 
 
 @pytest.mark.asyncio

@@ -2,6 +2,7 @@ import inspect
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
+
 import pytest
 
 from postgres_mcp.application.database_service import DatabaseInspectionService
@@ -23,9 +24,7 @@ from postgres_mcp.sql import SqlDriver
 async def test_database_service_contract():
     mock_driver = MagicMock()
     mock_driver.execute_query = AsyncMock(
-        return_value=[
-            SqlDriver.RowResult(cells={"schema_name": "public", "schema_owner": "postgres", "schema_type": "User Schema"})
-        ]
+        return_value=[SqlDriver.RowResult(cells={"schema_name": "public", "schema_owner": "postgres", "schema_type": "User Schema"})]
     )
 
     class FakeDriverContext:
@@ -82,7 +81,7 @@ async def test_health_and_top_queries_service():
     driver_factory = FakeDriverContext()
     service = HealthInspectionService(driver_factory)
 
-    with patch.object(DatabaseHealthTool, "health", AsyncMock(return_value="Health: OK")) as mock_health:
+    with patch.object(DatabaseHealthTool, "health", AsyncMock(return_value="Health: OK")):
         res = await service.check_health("all", database="custom_db")
         assert res == "Health: OK"
         assert driver_factory.database == "custom_db"

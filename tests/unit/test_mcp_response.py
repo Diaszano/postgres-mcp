@@ -1,7 +1,7 @@
 import json
-from psycopg import OperationalError
-import pytest
+
 from mcp import types
+from psycopg import OperationalError
 
 from postgres_mcp.mcp_response import error_result
 from postgres_mcp.mcp_response import format_mcp_result
