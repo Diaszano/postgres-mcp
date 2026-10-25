@@ -191,6 +191,31 @@ async def test_byte_limited_read_keeps_has_more_unknown(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["offset", "keyset"])
+async def test_byte_truncation_at_cumulative_cap_keeps_has_more_unknown(monkeypatch, mode):
+    driver = PageDriver()
+    service, store = make_service(driver)
+    first = await service.first_page("SELECT id FROM items ORDER BY id", "app", 2, 15, 1, mode, None)
+    assert first.next_cursor is not None
+
+    async def bounded(*args, **kwargs):
+        return BoundedQueryResult([{"id": 2}], 1, True, "max_result_bytes", 1, 15)
+
+    monkeypatch.setattr(driver, "execute_bounded_query", bounded)
+    page = await service.next_page(first.next_cursor, None, None)
+    assert page.total_returned_rows == 2
+    assert page.has_more is None
+    assert json.loads(page.to_text())["has_more"] is None
+    assert page.next_cursor is None
+    assert page.expires_in_seconds == 0
+    assert page.truncated is True
+    assert page.limit_reached == "max_rows"
+    with pytest.raises(PublicToolError) as error:
+        store.reserve(first.next_cursor, None)
+    assert error.value.code == "CURSOR_INVALID"
+
+
+@pytest.mark.asyncio
 async def test_cancelled_page_releases_reservation_and_lease(monkeypatch):
     driver = PageDriver()
     service, store = make_service(driver)
