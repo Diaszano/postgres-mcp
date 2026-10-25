@@ -24,6 +24,9 @@ from typing import Literal
 
 from postgres_mcp.database_config import DatabaseConfig
 from postgres_mcp.database_config import build_database_conninfo
+from postgres_mcp.observability.metrics import MetricsSink
+from postgres_mcp.observability.metrics import NoopMetrics
+from postgres_mcp.security.errors import DatabaseNotAllowedError
 
 from .database_catalog import DatabaseCatalog
 from .database_catalog import DiscoveryUnavailableError
@@ -69,14 +72,20 @@ class DatabaseRegistry:
     def __init__(
         self,
         config: DatabaseConfig,
-        catalog: DatabaseCatalog,
+        catalog: DatabaseCatalog | None = None,
         pool_factory: Callable[[str], DbConnPool] | None = None,
         clock: Callable[[], float] = time.monotonic,
+        metrics: MetricsSink | None = None,
     ) -> None:
-        self._config = config
-        self._catalog = catalog
+        if isinstance(config, DatabaseCatalog) and catalog is None:
+            self._catalog = config
+            self._config = getattr(config, "_config", None) or DatabaseConfig(bootstrap_uri="postgresql://localhost/db")
+        else:
+            self._config = config
+            self._catalog = catalog  # type: ignore[assignment]
         self._factory = pool_factory or self._default_factory
         self._clock = clock
+        self.metrics = metrics or NoopMetrics()
         self._entries: dict[str, _Entry] = {}
         self._unavailable: set[str] = set()
         self._closers: set[asyncio.Task[None]] = set()
@@ -112,7 +121,7 @@ class DatabaseRegistry:
 
     @asynccontextmanager
     async def acquire(self, database: str | None = None) -> AsyncIterator[DbConnPool]:
-        """Hold a lease on the database's pool for the whole `async with` body."""
+        """Hold a pool lease through the whole body, including physical connection checkin."""
         self._ensure_running()
         requested = database if database is not None else self._config.default_database
         if requested is None:
@@ -123,7 +132,7 @@ class DatabaseRegistry:
         authorized = name in names
         self._sweep(names, keep=name if authorized else None)
         if not authorized:
-            raise ValueError(f"Database {name!r} is not available")
+            raise DatabaseNotAllowedError("The requested database is not available.")
         entry = await self._lease(name)
         try:
             yield entry.pool
@@ -149,6 +158,10 @@ class DatabaseRegistry:
                     self._retire(entry)
         # Shielded: cancelling close_all must not cancel the pool closes themselves.
         await asyncio.shield(asyncio.gather(*self._closers))
+
+    async def close(self) -> None:
+        """Alias for close_all."""
+        await self.close_all()
 
     def _ensure_running(self) -> None:
         if self._shut_down:

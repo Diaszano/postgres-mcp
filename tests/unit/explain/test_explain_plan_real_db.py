@@ -259,7 +259,8 @@ async def test_explain_invalid_query_with_real_db(local_sql_driver):
 
         # Verify error handling
         assert isinstance(result, ErrorResult)
-        error_msg = result.value.lower()
-        assert "relation" in error_msg and "not exist" in error_msg
+        assert result.value == "The operation failed."
+        assert "nonexistent_table" not in result.value
+        assert query not in result.value
     finally:
         await cleanup_test_tables(local_sql_driver)

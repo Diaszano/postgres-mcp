@@ -211,7 +211,8 @@ async def test_error_handling(mock_pg13_driver, mock_extension_installed):
     result = await calc.get_top_queries_by_time(limit=3)
 
     # Check that the error is properly reported
-    assert "Error getting slow queries: Database error" in result
+    assert result == "The operation failed."
+    assert "Database error" not in result
 
 
 @pytest.mark.asyncio

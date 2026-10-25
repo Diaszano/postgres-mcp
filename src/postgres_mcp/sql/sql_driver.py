@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import math
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -10,12 +11,37 @@ from typing import List
 from typing import Optional
 from urllib.parse import urlparse
 from urllib.parse import urlunparse
+from uuid import uuid4
 
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 from typing_extensions import LiteralString
 
+from ..query_limits.admission import remaining_query_seconds
+from ..query_limits.results import BoundedQueryResult
+from ..query_limits.results import read_bounded_result
+from ..security.errors import log_public_error
+
 logger = logging.getLogger(__name__)
+
+
+def query_for_validation(query: str, params: tuple[object, ...] | None) -> str:
+    """Expose bind positions to the AST validator without inserting parameter values."""
+    if params is None:
+        return query
+    position = 0
+
+    def placeholder(match):
+        nonlocal position
+        if match[0] == "%%":
+            return "%"
+        position += 1
+        return f"${position}"
+
+    parsed = re.sub(r"%%|%s", placeholder, query)
+    if position != len(params):
+        raise ValueError("Query parameter count does not match placeholders")
+    return parsed
 
 
 def obfuscate_password(text: str | None) -> str | None:
@@ -140,7 +166,7 @@ class DbConnPool:
                 # Close the pool
                 await self.pool.close()
             except Exception as e:
-                logger.warning(f"Error closing connection pool: {e}")
+                log_public_error(logger, "close_connection_pool", e, level=logging.WARNING)
             finally:
                 self.pool = None
                 self._is_valid = False
@@ -169,6 +195,8 @@ class SqlDriver:
         self,
         conn: Any = None,
         engine_url: str | None = None,
+        *,
+        owns_transaction: bool = True,
     ):
         """
         Initialize with a PostgreSQL connection or pool.
@@ -176,7 +204,9 @@ class SqlDriver:
         Args:
             conn: PostgreSQL connection object or pool
             engine_url: Connection URL string as an alternative to providing a connection
+            owns_transaction: False when a session context owns transaction boundaries and access mode
         """
+        self.owns_transaction = owns_transaction
         if conn:
             self.conn = conn
             # Check if this is a connection pool
@@ -192,6 +222,8 @@ class SqlDriver:
     def connect(self):
         if self.conn is not None:
             return self.conn
+        if not self.owns_transaction:
+            raise ValueError("The database session is closed")
         if self.engine_url:
             self.conn = DbConnPool(self.engine_url)
             self.is_pool = True
@@ -234,20 +266,123 @@ class SqlDriver:
         except Exception as e:
             # Pools are never invalidated here: ordinary SQL errors leave them usable, opening
             # failures are handled in pool_connect, and psycopg_pool recovers broken connections.
-            if self.conn and not self.is_pool:
+            if self.conn and not self.is_pool and self.owns_transaction:
                 self.conn = None
 
             raise e
+
+    async def execute_bounded_query(
+        self,
+        query: LiteralString,
+        *,
+        max_rows: int,
+        max_result_bytes: int,
+        timeout_seconds: int,
+        safe_row_yielding: bool = False,
+        params: tuple[object, ...] | None = None,
+    ) -> BoundedQueryResult:
+        """Execute one validated read query and collect a bounded result."""
+        from pglast.parser import parse_sql
+
+        if len(parse_sql(query_for_validation(query, params))) != 1:
+            raise ValueError("Bounded queries must contain exactly one SQL statement")
+        if self.conn is None:
+            self.connect()
+        if self.conn is None:
+            raise ValueError("Connection not established")
+        if self.is_pool:
+            pool = await self.conn.pool_connect()
+            async with pool.connection() as connection:
+                return await self._execute_bounded_with_connection(
+                    connection,
+                    query,
+                    max_rows,
+                    max_result_bytes,
+                    timeout_seconds,
+                    safe_row_yielding,
+                    params,
+                )
+        return await self._execute_bounded_with_connection(
+            self.conn,
+            query,
+            max_rows,
+            max_result_bytes,
+            timeout_seconds,
+            safe_row_yielding,
+            params,
+        )
+
+    async def _execute_bounded_with_connection(
+        self, connection, query, max_rows, max_result_bytes, timeout_seconds, safe_row_yielding, params=None
+    ) -> BoundedQueryResult:
+        transaction_started = False
+        try:
+            async with connection.cursor(row_factory=dict_row) as control_cursor:
+                if self.owns_transaction:
+                    await control_cursor.execute("BEGIN TRANSACTION READ ONLY")
+                    transaction_started = True
+                    await control_cursor.execute("SET TRANSACTION READ ONLY")
+                    await control_cursor.execute("SET LOCAL search_path = pg_catalog, public, pg_temp")
+                remaining = remaining_query_seconds()
+                if remaining is not None:
+                    milliseconds = max(1, math.ceil(remaining * 1000))
+                    await control_cursor.execute(
+                        "SELECT pg_catalog.set_config('statement_timeout', %s, true)",
+                        [str(milliseconds)],
+                    )
+                from .safe_sql import validate_restricted_function_resolution
+
+                await validate_restricted_function_resolution(control_cursor, query_for_validation(query, params))
+                async with connection.cursor(name=f"bounded_{uuid4().hex}", row_factory=dict_row) as cursor:
+                    await cursor.execute(query, params)
+                    if cursor.description is None:
+                        raise ValueError("Bounded query did not return rows")
+                    result = await read_bounded_result(
+                        cursor,
+                        max_rows=max_rows,
+                        max_result_bytes=max_result_bytes,
+                        timeout_seconds=timeout_seconds,
+                        safe_row_yielding=safe_row_yielding,
+                    )
+                if transaction_started:
+                    await control_cursor.execute("ROLLBACK")
+                    transaction_started = False
+                return result
+        except BaseException as e:
+            if transaction_started:
+                try:
+                    await connection.rollback()
+                except Exception as rollback_error:
+                    log_public_error(logger, "rollback_transaction", rollback_error)
+            log_public_error(logger, "execute_bounded_query", e)
+            raise
 
     async def _execute_with_connection(self, connection, query, params, force_readonly) -> Optional[List[RowResult]]:
         """Execute query with the given connection."""
         transaction_started = False
         try:
             async with connection.cursor(row_factory=dict_row) as cursor:
+                remaining = remaining_query_seconds()
                 # Start read-only transaction
-                if force_readonly:
-                    await cursor.execute("BEGIN TRANSACTION READ ONLY")
+                if force_readonly and self.owns_transaction:
                     transaction_started = True
+                    await cursor.execute("BEGIN TRANSACTION READ ONLY")
+                    # BEGIN inside an existing transaction does not change its access mode.
+                    await cursor.execute("SET TRANSACTION READ ONLY")
+                    await cursor.execute("SET LOCAL search_path = pg_catalog, public, pg_temp")
+                elif remaining is not None and self.owns_transaction:
+                    transaction_started = True
+                    await cursor.execute("BEGIN")
+
+                remaining = remaining_query_seconds()
+                if remaining is not None:
+                    milliseconds = max(1, math.ceil(remaining * 1000))
+                    await cursor.execute("SELECT pg_catalog.set_config('statement_timeout', %s, true)", [str(milliseconds)])
+
+                if force_readonly:
+                    from .safe_sql import validate_restricted_function_resolution
+
+                    await validate_restricted_function_resolution(cursor, query)
 
                 if params:
                     await cursor.execute(query, params)
@@ -259,7 +394,7 @@ class SqlDriver:
                     pass
 
                 if cursor.description is None:  # No results (like DDL statements)
-                    if not force_readonly:
+                    if not force_readonly and self.owns_transaction:
                         await cursor.execute("COMMIT")
                     elif transaction_started:
                         await cursor.execute("ROLLBACK")
@@ -270,7 +405,7 @@ class SqlDriver:
                 rows = await cursor.fetchall()
 
                 # End the transaction appropriately
-                if not force_readonly:
+                if not force_readonly and self.owns_transaction:
                     await cursor.execute("COMMIT")
                 elif transaction_started:
                     await cursor.execute("ROLLBACK")
@@ -278,13 +413,13 @@ class SqlDriver:
 
                 return [SqlDriver.RowResult(cells=dict(row)) for row in rows]
 
-        except Exception as e:
+        except BaseException as e:
             # Try to roll back the transaction if it's still active
             if transaction_started:
                 try:
                     await connection.rollback()
                 except Exception as rollback_error:
-                    logger.error(f"Error rolling back transaction: {rollback_error}")
+                    log_public_error(logger, "rollback_transaction", rollback_error)
 
-            logger.error(f"Error executing query ({query}): {e}")
+            log_public_error(logger, "execute_query", e)
             raise e

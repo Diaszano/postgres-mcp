@@ -142,21 +142,21 @@ Agora você vai editar a seção `mcpServers` do arquivo de configuração.
         "--rm",
         "-e",
         "DATABASE_URI",
+        "-e",
+        "DATABASE_DOCKER_REMAP_LOCALHOST",
         "crystaldba/postgres-mcp",
         "--access-mode=unrestricted"
       ],
       "env": {
-        "DATABASE_URI": "postgresql://username:password@localhost:5432/dbname"
+        "DATABASE_URI": "postgresql://username:password@localhost:5432/dbname",
+        "DATABASE_DOCKER_REMAP_LOCALHOST": "true"
       }
     }
   }
 }
 ```
 
-A imagem Docker do Postgres MCP Pro remapeia automaticamente o nome de host `localhost` para que funcione de dentro do contêiner.
-
-- MacOS/Windows: usa `host.docker.internal` automaticamente
-- Linux: usa `172.17.0.1` ou o endereço de host apropriado automaticamente
+O remapeamento do host Docker fica desativado por padrão. Defina `DATABASE_DOCKER_REMAP_LOCALHOST=true` no ambiente do contêiner para remapear o host `localhost` do banco. O entrypoint usa `host.docker.internal` no MacOS/Windows ou `172.17.0.1` no Linux quando estiver acessível.
 
 ##### Se você está usando `uvx`
 
@@ -226,8 +226,8 @@ Substitua `postgresql://...` pela [URI de conexão do seu banco de dados Postgre
 ##### Modo de acesso
 
 O Postgres MCP Pro oferece suporte a vários *modos de acesso* para dar a você controle sobre as operações que o agente de IA pode executar no banco de dados:
-- **Modo Unrestricted**: permite acesso total de leitura e escrita para modificar dados e esquema. É adequado para ambientes de desenvolvimento.
-- **Modo Restricted**: limita as operações a transações somente leitura e impõe restrições ao uso de recursos (atualmente apenas o tempo de execução). Somente as instruções `SELECT`, `EXPLAIN` (sem `ANALYZE`), `SHOW` e `ANALYZE` são permitidas; `VACUUM` é rejeitado porque não pode ser executado dentro de um bloco de transação. Uma instrução rejeitada retorna um erro que informa o motivo. É adequado para ambientes de produção.
+- **Modo Unrestricted**: permite acesso total de leitura e escrita para modificar dados e esquema quando os limites de consulta estão desabilitados. É adequado para ambientes de desenvolvimento.
+- **Modo Restricted**: limita as operações a transações somente leitura, valida o SQL e limita o tempo de execução. Com os limites de consulta desabilitados, `execute_sql` aceita `SELECT`, `EXPLAIN` (sem `ANALYZE`) e `SHOW`; `ANALYZE` independente e `VACUUM` são rejeitados. Habilitar os limites de consulta restringe ainda mais `execute_sql` a uma única consulta segura, somente leitura e que retorna linhas, em ambos os modos de acesso; consulte a nota de migração abaixo.
 
 Para usar o modo restricted, substitua `--access-mode=unrestricted` por `--access-mode=restricted` nos exemplos de configuração acima.
 
@@ -246,12 +246,11 @@ Muitos clientes MCP têm arquivos de configuração semelhantes aos do Claude De
 O Postgres MCP Pro oferece suporte ao [transporte SSE](https://modelcontextprotocol.io/docs/concepts/transports#server-sent-events-sse), que permite que vários clientes MCP compartilhem um único servidor, possivelmente remoto.
 Para usar o transporte SSE, você precisa iniciar o servidor com a opção `--transport=sse`.
 
-Por exemplo, com Docker run:
+Para um cliente local, execute o servidor na mesma máquina:
 
 ```bash
-docker run -p 8000:8000 \
-  -e DATABASE_URI=postgresql://username:password@localhost:5432/dbname \
-  crystaldba/postgres-mcp --access-mode=unrestricted --transport=sse
+DATABASE_URI='postgresql://username:password@localhost:5432/dbname' \
+  uvx postgres-mcp --access-mode=restricted --transport=sse
 ```
 
 Em seguida, atualize a configuração do seu cliente MCP para chamar o servidor MCP.
@@ -281,6 +280,31 @@ Para o Windsurf, o formato em `mcp_config.json` é um pouco diferente:
 }
 ```
 
+## Implantação HTTP autenticada
+
+**Migração:** SSE e Streamable HTTP continuam usando `localhost` por padrão. Endereços fora de loopback, incluindo `0.0.0.0`, `::`, IPs privados e nomes diferentes de `localhost`, agora são rejeitados antes das conexões ao banco e da inicialização HTTP, a menos que as três variáveis abaixo sejam válidas. Stdio ignora a configuração HTTP e não exige credenciais HTTP. `DATABASE_URI`, modos de acesso e parâmetros das ferramentas permanecem iguais.
+
+| Variável | Valor obrigatório para HTTP autenticado |
+| --- | --- |
+| `MCP_HTTP_AUTH_TOKEN` | Um segredo bearer aleatório com pelo menos 32 caracteres ASCII imprimíveis, sem espaços. Não o coloque nos argumentos do comando nem no controle de versão. |
+| `MCP_HTTP_ALLOWED_HOSTS` | Cabeçalhos Host exatos separados por vírgula, incluindo portas quando enviadas pelo cliente, como `mcp.example.com` ou `mcp.example.com:8443`. Curingas e URLs são rejeitados. |
+| `MCP_HTTP_ALLOWED_ORIGINS` | Origens HTTPS exatas separadas por vírgula, como `https://client.example.com`. Caminhos, credenciais e curingas são rejeitados. |
+
+Configure o segredo no armazenamento de segredos ou no ambiente do serviço e execute atrás de um proxy HTTPS com terminação TLS:
+
+```bash
+export MCP_HTTP_ALLOWED_HOSTS='mcp.example.com'
+export MCP_HTTP_ALLOWED_ORIGINS='https://client.example.com'
+# MCP_HTTP_AUTH_TOKEN e DATABASE_URI são fornecidos com segurança pelo ambiente do serviço.
+uvx postgres-mcp --access-mode=restricted --transport=streamable-http
+```
+
+Use `/mcp` para Streamable HTTP ou `--transport=sse` com `/sse` e `/messages/` para SSE. Os clientes devem enviar `Authorization: Bearer <segredo>` em todas as requisições HTTP, inclusive nos POSTs de mensagens SSE. Requisições anônimas ou com token inválido recebem 401. Requisições autenticadas com Host não permitido recebem 421; com Origin não permitido, recebem 403. Clientes nativos podem omitir Origin. O SDK MCP disponibiliza a identidade estável `configured-http-client`; todos os portadores do segredo compartilham o mesmo acesso ao banco. Trata-se de uma credencial bearer previamente provisionada, sem login OAuth nem serviço de autorização por usuário. Para rotacioná-la, altere o segredo e reinicie o processo.
+
+O proxy deve preservar Authorization, o Host público e qualquer cabeçalho Origin. Termine TLS no proxy, exponha apenas a porta HTTPS, limite conexões e requisições (incluindo streams SSE simultâneos) e impeça acesso direto ao backend com loopback ou regras de firewall. Não registre Authorization, segredos ou dados do banco nos logs do proxy. Uma declaração de ingresso confiável não habilita endereços públicos nem desativa a verificação bearer. Para um endereço privado de container/backend, use `--streamable-http-host=0.0.0.0` ou `--sse-host=0.0.0.0` **com as mesmas variáveis de autenticação** e restrinja o acesso de rede ao ingresso. Publicar a porta do container não expõe um processo vinculado ao loopback do próprio container.
+
+O caminho de autenticação, identidade e Host/Origin é exercitado com o SDK MCP 1.25.0 nos testes focados de transporte. Terminação TLS, isolamento do proxy e limites de tráfego são responsabilidades da implantação; este repositório não instala nem verifica uma implantação de proxy.
+
 <a id="multiple-databases-optional"></a>
 ## Múltiplos bancos de dados (opcional)
 
@@ -298,7 +322,7 @@ DATABASE_URI='postgresql://user:password@localhost:5432/app_development' uvx pos
 - O modo de acesso padrão continua sendo `unrestricted`.
 - `database` só é aceito quando é igual ao banco de dados da URI; qualquer outro nome é rejeitado com um erro (sem descoberta, sem fallback).
 - `list_databases` retorna apenas esse banco de dados. Se a URI não tiver nome de banco de dados, `name` é `null`.
-- `DATABASE_ALLOWED_DATABASES`, `DATABASE_EXCLUDED_DATABASES` e as demais variáveis abaixo não têm efeito.
+- `DATABASE_ALLOWED_DATABASES`, `DATABASE_EXCLUDED_DATABASES` e as configurações de descoberta/pool abaixo não têm efeito. Os limites de consulta se aplicam tanto no modo legado quanto no modo de descoberta.
 
 ### Modo de descoberta
 
@@ -323,10 +347,39 @@ uvx postgres-mcp
 | `DATABASE_MAX_POOLS` | `4` | Número máximo de pools de bancos de dados abertos ao mesmo tempo. |
 | `DATABASE_POOL_MAX_SIZE` | `2` | Número máximo de conexões por pool de banco de dados. |
 | `DATABASE_POOL_IDLE_SECONDS` | `600` | Tempo ocioso após o qual um pool sem uso pode ser fechado. |
+| `DATABASE_QUERY_GUARDRAILS_ENABLED` | `false` | Habilita limites de consulta e restringe `execute_sql` a uma única consulta segura, somente leitura e que retorna linhas, em ambos os modos de acesso. Consulte a orientação de migração abaixo. Transportes remotos exibem um aviso na inicialização enquanto estiver desabilitado. |
+| `DATABASE_QUERY_DEFAULT_MAX_ROWS` | `200` | Número padrão máximo de linhas retornadas por uma consulta. |
+| `DATABASE_QUERY_HARD_MAX_ROWS` | `5000` | Limite máximo de linhas que uma chamada da ferramenta pode solicitar. |
+| `DATABASE_QUERY_DEFAULT_TIMEOUT_SECONDS` | `15` | Tempo limite padrão da consulta, em segundos. |
+| `DATABASE_QUERY_HARD_TIMEOUT_SECONDS` | `60` | Tempo limite máximo que uma chamada da ferramenta pode solicitar. |
+| `DATABASE_QUERY_MAX_RESULT_BYTES` | `2097152` | Tamanho máximo do JSON UTF-8 de `CallToolResult` do MCP, incluindo texto escapado, saída estruturada e metadados; exclui o envelope JSON-RPC e o enquadramento do transporte. Valor máximo configurável de 64 MiB. |
+| `DATABASE_QUERY_MAX_CONCURRENCY` | `4` | Número máximo de execuções SQL simultâneas com limites; valor máximo configurável de 256. |
+| `DATABASE_PAGINATION_ENABLED` | `true` | Permite paginação de consultas quando solicitada explicitamente. |
+| `DATABASE_PAGINATION_DEFAULT_PAGE_SIZE` | `100` | Quantidade padrão de linhas por página; não pode exceder o tamanho máximo de página. |
+| `DATABASE_PAGINATION_MAX_PAGE_SIZE` | `1000` | Tamanho máximo solicitado por página. As páginas também respeitam o saldo do limite total de linhas e o limite de bytes da resposta. |
+| `DATABASE_PAGINATION_CURSOR_TTL_SECONDS` | `300` | Validade do cursor em segundos após cada página concluída. |
+| `DATABASE_PAGINATION_MAX_ACTIVE_CURSORS` | `100` | Quantidade máxima de cursores armazenados; novas consultas podem remover o cursor não reservado mais antigo. |
 
 Ambas as variáveis de lista aceitam uma lista separada por vírgulas (`app,testing`; espaços ao redor dos nomes são removidos) ou, quando o valor começa com `[`, um array JSON de strings (`["app", "name,with,comma"]`).
 Use a forma JSON para nomes que contenham vírgulas. Os nomes nunca são convertidos para minúsculas nem normalizados de outra forma.
-As variáveis numéricas devem ser inteiros maiores ou iguais a 1; valores inválidos interrompem o servidor na inicialização com um erro que nunca inclui a URI nem a senha.
+As variáveis numéricas devem ser inteiros maiores ou iguais a 1; valores inválidos interrompem o servidor na inicialização com um erro que nunca inclui a URI nem a senha. As configurações de limites de consulta também exigem inteiros positivos; os valores padrão de linhas e tempo limite não podem exceder seus limites máximos. O limite de linhas é 10.000.000 e o de tempo limite é 3.600 segundos. Os limites ficam desabilitados por padrão durante a migração.
+
+**Migração de `execute_sql` para os limites de consulta.** Antes de definir `DATABASE_QUERY_GUARDRAILS_ENABLED=true`, migre os chamadores: o modo habilitado aceita apenas uma consulta segura, somente leitura e que retorna linhas, inclusive com `--access-mode=unrestricted`. Escritas/DDL, múltiplas instruções, `SHOW`, `EXPLAIN`, `SELECT INTO`, CTEs que modificam dados e cláusulas de bloqueio de linhas são rejeitados. Separe lotes somente leitura em chamadas individuais, use `explain_query` para planos e mova escritas ou outras instruções incompatíveis para um cliente de banco de dados separado e autorizado antes de habilitar a opção. Com a opção desabilitada e sem argumentos de limite, `execute_sql` mantém o comportamento de instruções e o formato de resultado legados. A paginação explícita usa os mesmos limites de linhas, tempo, bytes e concorrência mesmo quando a opção de limites está desabilitada.
+
+**Paginação de consultas.** Chamadas existentes de `execute_sql(sql, database)` mantêm `pagination="none"`. Informar `page_size` sem um modo explícito gera erro. Para paginar:
+
+```python
+execute_sql("SELECT id, name FROM users ORDER BY id", "app", max_rows=250, page_size=100, pagination="keyset")
+fetch_query_page(cursor="<next_cursor da resposta anterior>", page_size=100)
+```
+
+Os modos `offset` e `keyset` aceitam um SELECT conservador sobre uma única tabela, com uma coluna de ordenação ascendente incluída na projeção e verificada como única e não nula. Junções, agregações, aliases nas colunas projetadas, LIMIT/OFFSET existentes e expressões incompatíveis são rejeitados. A paginação é somente leitura em ambos os modos de acesso. `max_rows` limita toda a sequência; limites de linhas e tempo omitidos usam os padrões de consulta. O tamanho padrão de página é 100, limitado pelo saldo de linhas e pelos bytes da resposta. As configurações numéricas de paginação exigem inteiros positivos; o tamanho padrão não pode exceder o máximo. Valores inválidos interrompem a inicialização.
+
+As páginas retornam JSON no conteúdo de texto, incluindo `rows`, `returned_rows`, `total_returned_rows`, `max_rows`, `page_size`, `truncated`, `has_more`, `next_cursor` e `expires_in_seconds`. Continue enquanto houver `next_cursor`; `has_more` pode ser nulo quando o limite de bytes impede determinar se existem mais linhas. A página final não tem cursor. Atingir `max_rows` encerra a sequência mesmo que existam mais linhas na tabela.
+
+A continuação aceita apenas o cursor e o tamanho opcional de página, dentro do máximo configurado. SQL, banco, modo e limites totais não podem mudar. Cada página verifica novamente a autorização do banco e recebe um novo prazo; nenhuma conexão ou transação fica aberta entre páginas. A resposta informa `consistency="best_effort"`: as páginas não compartilham um snapshot. Inserções ou exclusões concorrentes podem fazer a paginação por offset repetir ou pular linhas. A paginação keyset exige uma chave de ordenação verificada como única e não nula, que permaneça estável durante toda a sequência; ela evita deslocamentos de offset, mas ainda vê alterações posteriores, e inserções anteriores à última chave não são revisitadas.
+
+Cursores são opacos, vinculados à credencial HTTP autenticada por um hash SHA-256 (ou ao processo/sessão stdio atual) e armazenados apenas no processo servidor. Cada token de continuação é consumido no máximo uma vez: uma página concluída consome o token e emite outro quando necessário. Uma falha antes da confirmação mantém o cursor original e sua expiração, permitindo repetir a chamada enquanto ele for válido. Se a resposta se perder após a confirmação, a repetição falha com `CURSOR_INVALID`; reinicie a consulta se o próximo cursor foi perdido. Por padrão, os cursores expiram após 300 segundos (`CURSOR_EXPIRED`) e podem ser removidos ao atingir a capacidade. Reinício, encerramento, remoção por capacidade, outro processo servidor ou outra credencial autenticada invalidam a continuação (`CURSOR_INVALID`). Renovar ou rotacionar o token bearer também invalida seus cursores. Não compartilhe cursores nem suponha portabilidade entre workers.
 
 **O que é descobrível.** Um banco de dados só é listado se não for um template, aceitar conexões, a role tiver `CONNECT` nele e passar pelas listas de permissão e de bloqueio.
 O banco de dados em `DATABASE_URI` é apenas a conexão de bootstrap: ele não é especial.
@@ -446,7 +499,7 @@ Escolhemos essa abordagem porque o [ecossistema de clientes MCP](https://modelco
 Isso contrasta com a abordagem de outros servidores MCP para Postgres, incluindo o [Reference Postgres MCP Server](https://github.com/modelcontextprotocol/servers-archived/tree/main/src/postgres), que usam [recursos MCP](https://modelcontextprotocol.io/docs/concepts/resources) para expor informações de esquema.
 
 
-Ferramentas do Postgres MCP Pro (todas, exceto `list_databases`, aceitam um argumento opcional `database`, veja [Múltiplos bancos de dados](#multiple-databases-optional)):
+Ferramentas do Postgres MCP Pro (todas, exceto `list_databases` e `fetch_query_page`, aceitam um argumento opcional `database`, veja [Múltiplos bancos de dados](#multiple-databases-optional)):
 
 | Nome da ferramenta | Descrição |
 |--------------------|-----------|
@@ -454,7 +507,8 @@ Ferramentas do Postgres MCP Pro (todas, exceto `list_databases`, aceitam um argu
 | `list_schemas` | Lista todos os esquemas de banco de dados disponíveis na instância PostgreSQL. |
 | `list_objects` | Lista objetos de banco de dados (tabelas, views, sequências, extensões) dentro de um esquema especificado. |
 | `get_object_details` | Fornece informações sobre um objeto de banco de dados específico, por exemplo, as colunas, restrições e índices de uma tabela. |
-| `execute_sql` | Executa instruções SQL no banco de dados, com limitações de somente leitura quando conectado em modo restricted. |
+| `execute_sql` | Executa SQL, com paginação opcional somente leitura nos modos `offset` ou `keyset`. |
+| `fetch_query_page` | Continua uma consulta paginada usando apenas o cursor e o tamanho opcional de página. |
 | `explain_query` | Obtém o plano de execução de uma consulta SQL, descrevendo como o PostgreSQL a processará e expondo o modelo de custos do planejador de consultas. Pode ser invocada com índices hipotéticos para simular o comportamento após a adição de índices. |
 | `get_top_queries` | Informa as consultas SQL mais lentas com base no tempo total de execução, usando dados de `pg_stat_statements`. |
 | `analyze_workload_indexes` | Analisa a carga de trabalho do banco de dados para identificar consultas que consomem muitos recursos e, em seguida, recomenda os índices ideais para elas. |

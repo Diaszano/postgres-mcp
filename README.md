@@ -139,21 +139,21 @@ You will now edit the `mcpServers` section of the configuration file.
         "--rm",
         "-e",
         "DATABASE_URI",
+        "-e",
+        "DATABASE_DOCKER_REMAP_LOCALHOST",
         "crystaldba/postgres-mcp",
         "--access-mode=unrestricted"
       ],
       "env": {
-        "DATABASE_URI": "postgresql://username:password@localhost:5432/dbname"
+        "DATABASE_URI": "postgresql://username:password@localhost:5432/dbname",
+        "DATABASE_DOCKER_REMAP_LOCALHOST": "true"
       }
     }
   }
 }
 ```
 
-The Postgres MCP Pro Docker image will automatically remap the hostname `localhost` to work from inside of the container.
-
-- MacOS/Windows: Uses `host.docker.internal` automatically
-- Linux: Uses `172.17.0.1` or the appropriate host address automatically
+Docker hostname remapping is disabled by default. Set `DATABASE_DOCKER_REMAP_LOCALHOST=true` in the container environment to remap a `localhost` database host. The entrypoint uses `host.docker.internal` on MacOS/Windows or `172.17.0.1` on Linux when reachable.
 
 ##### If you are using `uvx`
 
@@ -223,8 +223,8 @@ Replace `postgresql://...` with your [Postgres database connection URI](https://
 ##### Access Mode
 
 Postgres MCP Pro supports multiple *access modes* to give you control over the operations that the AI agent can perform on the database:
-- **Unrestricted Mode**: Allows full read/write access to modify data and schema. It is suitable for development environments.
-- **Restricted Mode**: Limits operations to read-only transactions and imposes constraints on resource utilization (presently only execution time). Only `SELECT`, `EXPLAIN` (without `ANALYZE`), `SHOW`, and `ANALYZE` statements are allowed; `VACUUM` is rejected because it cannot run inside a transaction block. A rejected statement returns an error that states the reason. It is suitable for production environments.
+- **Unrestricted Mode**: Allows full read/write access to modify data and schema when query guardrails are disabled. It is suitable for development environments.
+- **Restricted Mode**: Limits operations to read-only transactions, validates SQL, and limits execution time. With query guardrails disabled, `execute_sql` accepts `SELECT`, `EXPLAIN` (without `ANALYZE`), and `SHOW`; standalone `ANALYZE` and `VACUUM` are rejected. Enabling query guardrails further limits `execute_sql` to one safe read-only row-producing query in either access mode; see the migration note below.
 
 To use restricted mode, replace `--access-mode=unrestricted` with `--access-mode=restricted` in the configuration examples above.
 
@@ -243,12 +243,11 @@ Many MCP clients have similar configuration files to Claude Desktop, and you can
 Postgres MCP Pro supports the [SSE transport](https://modelcontextprotocol.io/docs/concepts/transports#server-sent-events-sse), which allows multiple MCP clients to share one server, possibly a remote server.
 To use the SSE transport, you need to start the server with the `--transport=sse` option.
 
-For example, with Docker run:
+For a local client, run the server on the same host:
 
 ```bash
-docker run -p 8000:8000 \
-  -e DATABASE_URI=postgresql://username:password@localhost:5432/dbname \
-  crystaldba/postgres-mcp --access-mode=unrestricted --transport=sse
+DATABASE_URI='postgresql://username:password@localhost:5432/dbname' \
+  uvx postgres-mcp --access-mode=restricted --transport=sse
 ```
 
 Then update your MCP client configuration to call the the MCP server.
@@ -278,6 +277,31 @@ For Windsurf, the format in `mcp_config.json` is slightly different:
 }
 ```
 
+## Authenticated HTTP deployment
+
+**Migration:** SSE and Streamable HTTP still bind to `localhost` by default. Non-loopback binds, including `0.0.0.0`, `::`, private IPs and hostnames other than `localhost`, now fail before database connections or HTTP startup unless all three variables below are valid. Stdio ignores HTTP settings and requires no HTTP credentials. `DATABASE_URI`, access modes and tool parameters are unchanged.
+
+| Variable | Required value for authenticated HTTP |
+| --- | --- |
+| `MCP_HTTP_AUTH_TOKEN` | A randomly generated bearer secret of at least 32 printable ASCII characters, without spaces. Keep it out of command arguments and source control. |
+| `MCP_HTTP_ALLOWED_HOSTS` | Comma-separated exact Host headers, including ports when clients send them, such as `mcp.example.com` or `mcp.example.com:8443`. Wildcards and URLs are rejected. |
+| `MCP_HTTP_ALLOWED_ORIGINS` | Comma-separated exact HTTPS origins, such as `https://client.example.com`. Paths, credentials and wildcards are rejected. |
+
+Configure the secret through your service's secret store or environment, then run behind a TLS-terminating HTTPS proxy:
+
+```bash
+export MCP_HTTP_ALLOWED_HOSTS='mcp.example.com'
+export MCP_HTTP_ALLOWED_ORIGINS='https://client.example.com'
+# MCP_HTTP_AUTH_TOKEN and DATABASE_URI are supplied securely by the service environment.
+uvx postgres-mcp --access-mode=restricted --transport=streamable-http
+```
+
+Use `/mcp` for Streamable HTTP or `--transport=sse` with `/sse` and `/messages/` for SSE. Clients must send `Authorization: Bearer <secret>` on every HTTP request, including SSE message POSTs. Anonymous or invalid-token requests receive 401. Authenticated requests with an unlisted Host receive 421, and those with an unlisted Origin receive 403. Native clients may omit Origin. The MCP SDK exposes the stable principal `configured-http-client`; all holders of this shared secret have the same database access. This is a pre-provisioned bearer credential, without an OAuth login or per-user authorization service. Rotate it by changing the secret and restarting the process.
+
+The proxy must preserve Authorization, the public Host and any Origin header. Terminate TLS at the proxy, expose only its HTTPS listener, rate-limit connections and requests (including concurrent SSE streams), and prevent direct access to the backend with loopback binding or firewall rules. Do not log Authorization headers, secrets or database payloads at the proxy. A trusted-ingress declaration alone cannot enable public binding or bypass bearer verification. For a private container/backend bind, pass `--streamable-http-host=0.0.0.0` or `--sse-host=0.0.0.0` **with the same authentication variables** and restrict its network access to the ingress. Publishing a container port alone does not expose a process bound to the container's loopback interface.
+
+The authentication, principal and Host/Origin path is exercised against MCP SDK 1.25.0 in the focused transport tests. TLS termination, proxy isolation and rate limits are deployment responsibilities; no proxy deployment is installed or verified by this repository.
+
 ## Multiple Databases (Optional)
 
 By default Postgres MCP Pro talks to the single database named in `DATABASE_URI`, exactly as before.
@@ -294,7 +318,7 @@ DATABASE_URI='postgresql://user:password@localhost:5432/app_development' uvx pos
 - Default access mode stays `unrestricted`.
 - `database` is accepted only when it equals the URI database; any other name is rejected with an error (no discovery, no fallback).
 - `list_databases` returns only that database. If the URI has no database name, `name` is `null`.
-- `DATABASE_ALLOWED_DATABASES`, `DATABASE_EXCLUDED_DATABASES` and the other variables below have no effect.
+- `DATABASE_ALLOWED_DATABASES`, `DATABASE_EXCLUDED_DATABASES` and discovery/pool settings below have no effect. Query guardrails apply in both legacy and discovery modes.
 
 ### Discovery mode
 
@@ -319,10 +343,39 @@ uvx postgres-mcp
 | `DATABASE_MAX_POOLS` | `4` | Maximum number of database pools open at the same time. |
 | `DATABASE_POOL_MAX_SIZE` | `2` | Maximum connections per database pool. |
 | `DATABASE_POOL_IDLE_SECONDS` | `600` | Idle time after which an unused pool may be closed. |
+| `DATABASE_QUERY_GUARDRAILS_ENABLED` | `false` | Enables query budgets and limits `execute_sql` to one safe read-only row-producing query in either access mode. See migration guidance below. Remote transports warn at startup while disabled. |
+| `DATABASE_QUERY_DEFAULT_MAX_ROWS` | `200` | Default maximum rows returned by one query. |
+| `DATABASE_QUERY_HARD_MAX_ROWS` | `5000` | Maximum row limit a tool call may request. |
+| `DATABASE_QUERY_DEFAULT_TIMEOUT_SECONDS` | `15` | Default query timeout in seconds. |
+| `DATABASE_QUERY_HARD_TIMEOUT_SECONDS` | `60` | Maximum timeout a tool call may request. |
+| `DATABASE_QUERY_MAX_RESULT_BYTES` | `2097152` | Maximum UTF-8 JSON size of the MCP `CallToolResult`, including escaped text, structured output and metadata; excludes the JSON-RPC envelope and transport framing. Maximum configurable value is 64 MiB. |
+| `DATABASE_QUERY_MAX_CONCURRENCY` | `4` | Maximum concurrent budgeted SQL executions; maximum configurable value is 256. |
+| `DATABASE_PAGINATION_ENABLED` | `true` | Allows explicitly requested query pagination. |
+| `DATABASE_PAGINATION_DEFAULT_PAGE_SIZE` | `100` | Default rows per page; cannot exceed the maximum page size. |
+| `DATABASE_PAGINATION_MAX_PAGE_SIZE` | `1000` | Maximum requested page size. Pages also respect the remaining logical row budget and response byte limit. |
+| `DATABASE_PAGINATION_CURSOR_TTL_SECONDS` | `300` | Cursor lifetime in seconds after each successful page. |
+| `DATABASE_PAGINATION_MAX_ACTIVE_CURSORS` | `100` | Maximum stored cursors; new queries may evict the oldest unreserved cursor. |
 
 Both list variables accept a comma-separated list (`app,testing`, spaces around names are trimmed) or, when the value starts with `[`, a JSON array of strings (`["app", "name,with,comma"]`).
 Use the JSON form for names that contain commas. Names are never lower-cased or otherwise normalized.
-Numeric variables must be integers of at least 1; invalid values stop the server at startup with an error that never includes the URI or password.
+Numeric variables must be integers of at least 1; invalid values stop the server at startup with an error that never includes the URI or password. Query guardrail settings are strict positive integers; default row and timeout values cannot exceed their hard limits. Row limits are capped at 10,000,000 and timeout limits at 3,600 seconds. Guardrails default to disabled during migration.
+
+**Migrating `execute_sql` to query guardrails.** Before setting `DATABASE_QUERY_GUARDRAILS_ENABLED=true`, migrate callers: enabled mode accepts only one safe read-only row-producing query, including with `--access-mode=unrestricted`. Writes/DDL, multiple statements, `SHOW`, `EXPLAIN`, `SELECT INTO`, modifying CTEs, and row-locking clauses are rejected. Split read-only batches into separate calls, use `explain_query` for plans, and move writes or other unsupported statements to a separate authorized database client before enabling the flag. With the flag disabled and budget arguments omitted, `execute_sql` keeps its legacy statement behavior and result shape. Explicit pagination uses the same row, time, byte and concurrency budgets even when the guardrails flag is disabled.
+
+**Query pagination.** Existing `execute_sql(sql, database)` calls keep `pagination="none"`. A `page_size` without an explicit mode is rejected. To page a query, call:
+
+```python
+execute_sql("SELECT id, name FROM users ORDER BY id", "app", max_rows=250, page_size=100, pagination="keyset")
+fetch_query_page(cursor="<next_cursor from the previous response>", page_size=100)
+```
+
+`offset` and `keyset` support a conservative single-table SELECT with one ascending, projected ordering column verified as unique and non-null. Joins, aggregates, aliases on projected columns, existing LIMIT/OFFSET, and unsupported expressions are rejected. Pagination is read-only in either access mode. `max_rows` caps the whole chain; omitted row/time limits use the query defaults. Default page size is 100, capped by the remaining rows and response bytes. Numeric pagination settings must be positive integers; the default page size cannot exceed its maximum. Invalid settings stop startup.
+
+Pages return JSON in the text content, including `rows`, `returned_rows`, `total_returned_rows`, `max_rows`, `page_size`, `truncated`, `has_more`, `next_cursor`, and `expires_in_seconds`. Continue while `next_cursor` is present; `has_more` may be null when the byte limit prevents determining whether more rows exist. The final page has no cursor. Reaching `max_rows` ends the chain even if the table contains more rows.
+
+Continuation accepts only the cursor and optional page size, which must remain within the configured maximum. SQL, database, mode and logical budgets cannot change. Each page rechecks database authorization and gets a fresh timeout; no database connection or transaction is held between pages. The response reports `consistency="best_effort"`: pages do not share a snapshot. Concurrent inserts or deletes can make offset pagination duplicate or skip rows. Keyset pagination requires a verified unique, non-null ordering key that remains stable throughout the chain; it avoids offset shifts but still sees later writes, and inserts before its last key are not revisited.
+
+Cursors are opaque, bound to the authenticated HTTP credential through a SHA-256 digest (or the current stdio process/session), and stored only in the server process. Continuations have at-most-once consumption: a completed page consumes its token and issues a fresh one when needed. A failure before commit leaves the original cursor and expiry unchanged, so it can be retried while valid. If a response is lost after commit, replay fails with `CURSOR_INVALID`; restart the query if the next cursor was lost. Cursors expire after 300 seconds by default (`CURSOR_EXPIRED`) and may be evicted when capacity is reached. Restart, shutdown, eviction, a different server process or a different authenticated credential invalidates continuation (`CURSOR_INVALID`). Refreshing or rotating the bearer token also invalidates its cursors. Do not share cursors or assume portability across workers.
 
 **What is discoverable.** A database is listed only if it is not a template, accepts connections, the role has `CONNECT` on it, and it passes the allow and deny lists.
 The database in `DATABASE_URI` is only the bootstrap connection: it is not special.
@@ -441,7 +494,7 @@ We chose this approach because the [MCP client ecosystem](https://modelcontextpr
 This contrasts with the approach of other Postgres MCP servers, including the [Reference Postgres MCP Server](https://github.com/modelcontextprotocol/servers-archived/tree/main/src/postgres), which use [MCP resources](https://modelcontextprotocol.io/docs/concepts/resources) to expose schema information.
 
 
-Postgres MCP Pro Tools (all except `list_databases` accept an optional `database` argument, see [Multiple Databases](#multiple-databases-optional)):
+Postgres MCP Pro Tools (all except `list_databases` and `fetch_query_page` accept an optional `database` argument, see [Multiple Databases](#multiple-databases-optional)):
 
 | Tool Name | Description |
 |-----------|-------------|
@@ -449,7 +502,8 @@ Postgres MCP Pro Tools (all except `list_databases` accept an optional `database
 | `list_schemas` | Lists all database schemas available in the PostgreSQL instance. |
 | `list_objects` | Lists database objects (tables, views, sequences, extensions) within a specified schema. |
 | `get_object_details` | Provides information about a specific database object, for example, a table's columns, constraints, and indexes. |
-| `execute_sql` | Executes SQL statements on the database, with read-only limitations when connected in restricted mode. |
+| `execute_sql` | Executes SQL statements, with optional read-only `offset` or `keyset` pagination. |
+| `fetch_query_page` | Continues a paginated query using only its cursor and optional page size. |
 | `explain_query` | Gets the execution plan for a SQL query describing how PostgreSQL will process it and exposing the query planner's cost model. Can be invoked with hypothetical indexes to simulate the behavior after adding indexes. |
 | `get_top_queries` | Reports the slowest SQL queries based on total execution time using `pg_stat_statements` data. |
 | `analyze_workload_indexes` | Analyzes the database workload to identify resource-intensive queries, then recommends optimal indexes for them. |

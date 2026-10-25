@@ -21,6 +21,24 @@ from postgres_mcp.index.dta_calc import IndexRecommendation
 logger = getLogger(__name__)
 
 
+@pytest.mark.asyncio
+async def test_existing_index_literals_are_not_logged(create_dta, caplog):
+    definition = "CREATE INDEX private_idx ON users (email) WHERE email = 'private-index-sentinel@example.test'"
+    with (
+        patch.object(create_dta, "_get_existing_indexes", AsyncMock(return_value=[{"definition": definition}])),
+        patch.object(create_dta, "generate_candidates", AsyncMock(return_value=[])),
+        patch.object(create_dta, "_evaluate_configuration_cost", AsyncMock(return_value=1.0)),
+        patch.object(create_dta, "_enumerate_greedy", AsyncMock(return_value=(set(), 1.0))),
+        caplog.at_level("DEBUG", logger="postgres_mcp.index.dta_calc"),
+    ):
+        create_dta.max_runtime_seconds = 0
+        await create_dta._generate_recommendations([])
+
+    assert "private-index-sentinel@example.test" not in caplog.text
+    assert definition not in caplog.text
+    assert "Existing indexes: 1" in caplog.text
+
+
 class MockCell:
     def __init__(self, data: Dict[str, Any]):
         self.cells = data
@@ -232,7 +250,8 @@ async def test_error_handling(async_sql_driver, create_dta):
     async_sql_driver.execute_query = AsyncMock(side_effect=RuntimeError("HypoPG not available"))
     dta = create_dta
     session = await dta.analyze_workload(min_calls=50, min_avg_time_ms=5.0)
-    assert "HypoPG not available" in session.error
+    assert session.error == "The operation failed."
+    assert "HypoPG not available" not in session.error
 
     # Test invalid query handling
     async_sql_driver.execute_query = AsyncMock(return_value=None)
@@ -473,102 +492,42 @@ async def test_basic_workload_analysis(async_sql_driver):
         {"query": "SELECT * FROM users WHERE name = 'Alice'", "calls": 100},
         {"query": "SELECT * FROM orders WHERE user_id = 123", "calls": 50},
     ]
-    global responses
-    responses = [
-        # check if hypopg is enabled
-        [MockCell({"hypopg_enabled_result": 1})],
-        # check last analyze
-        [MockCell({"last_analyze": "2024-01-01 00:00:00"})],
-        # pg_stat_statements
-        [
-            MockCell(
-                {
-                    "queryid": 1,
-                    "query": workload[0]["query"],
-                    "calls": 100,
-                    "avg_exec_time": 10.0,
-                }
-            ),
-            MockCell(
-                {
-                    "queryid": 2,
-                    "query": workload[1]["query"],
-                    "calls": 50,
-                    "avg_exec_time": 5.0,
-                }
-            ),
-        ],
-        # pg_indexes
-        [],
-        # information_schema.columns
-        [
-            MockCell(
-                {
-                    "table_name": "users",
-                    "column_name": "name",
-                    "data_type": "character varying",
-                    "character_maximum_length": 150,
-                    "avg_width": 30,
-                    "potential_long_text": True,
-                }
-            ),
-            MockCell(
-                {
-                    "table_name": "orders",
-                    "column_name": "user_id",
-                    "data_type": "integer",
-                    "character_maximum_length": None,
-                    "avg_width": 4,
-                    "potential_long_text": False,
-                }
-            ),
-        ],
-        # hypopg_create_index (for users.name, orders.user_id)
-        [MockCell({"indexrelid": 1554}), MockCell({"indexrelid": 1555})],
-        # hypopg_list_indexes
-        [
-            MockCell({"index_name": "crystaldba_idx_users_name_1", "index_size": 8000}),
-            MockCell(
-                {
-                    "index_name": "crystaldba_idx_orders_user_id_1",
-                    "index_size": 4000,
-                }
-            ),
-        ],
-        # hypopg_reset
-        [],
-        # EXPLAIN without indexes
-        [MockCell({"QUERY PLAN": [{"Plan": {"Total Cost": 100.0}}]})],  # users.name
-        [MockCell({"QUERY PLAN": [{"Plan": {"Total Cost": 150.0}}]})],  # orders.user_id
-        [MockCell({"rel_size": 10000})],  # users table size
-        [MockCell({"rel_size": 10000})],  # orders table size
-        # pg_stats for size (users.name, orders.user_id)
-        [MockCell({"total_width": 10, "total_distinct": 100})],
-        # EXPLAIN with users.name index
-        [MockCell({"QUERY PLAN": [{"Plan": {"Total Cost": 50.0}}]})],  # users.name
-        [MockCell({"QUERY PLAN": [{"Plan": {"Total Cost": 150.0}}]})],  # orders.user_id
-        [MockCell({"total_width": 8, "total_distinct": 50})],
-        # EXPLAIN without orders.user_id index
-        [MockCell({"QUERY PLAN": [{"Plan": {"Total Cost": 100.0}}]})],  # users.name
-        [MockCell({"QUERY PLAN": [{"Plan": {"Total Cost": 75.0}}]})],  # orders.user_id
-        # EXPLAIN with users.name and orders.user_id indexes
-        [MockCell({"QUERY PLAN": [{"Plan": {"Total Cost": 50.0}}]})],  # users.name
-        [MockCell({"QUERY PLAN": [{"Plan": {"Total Cost": 75.0}}]})],  # orders.user_id
-        # hypopg_reset (final cleanup)
-        [],
-    ]
-    global responses_index
-    responses_index = 0
+    active_tables: set[str] = set()
 
     async def mock_execute_query(query, *args, **kwargs):
-        global responses_index
-        responses_index += 1
-        logger.info(
-            f"Query: {query}\n    Response: {
-                list(json.dumps(x.cells) for x in responses[responses_index - 1]) if responses_index <= len(responses) else None
-            }\n--------------------------------------------------------"
-        )
-        return responses[responses_index - 1] if responses_index <= len(responses) else None
+        if "hypopg_reset" in query:
+            active_tables.clear()
+            return []
+        if "hypopg_create_index" in query:
+            active_tables.add("users" if "users" in query else "orders")
+            return [MockCell({"indexrelid": 1554})]
+        if query.startswith("EXPLAIN"):
+            table = "users" if "users" in query else "orders"
+            base_cost = 100.0 if table == "users" else 150.0
+            return [MockCell({"QUERY PLAN": [{"Plan": {"Total Cost": base_cost / 2 if table in active_tables else base_cost}}]})]
+        if "pg_extension" in query:
+            return [MockCell({"extversion": "1.4"})]
+        if "last_analyze" in query:
+            return [MockCell({"last_analyze": "2024-01-01 00:00:00"})]
+        if "pg_stat_statements" in query:
+            return [MockCell({"queryid": i, "avg_exec_time": 10.0, **entry}) for i, entry in enumerate(workload)]
+        if "FROM pg_indexes" in query:
+            return []
+        if "information_schema.columns" in query:
+            return [
+                MockCell({"table_name": table, "column_name": column, "potential_long_text": False})
+                for table, column in (("users", "name"), ("orders", "user_id"))
+            ]
+        if "hypopg_list_indexes" in query:
+            return [
+                MockCell({"index_name": f"crystaldba_idx_{table}_{column}_1", "index_size": 4000})
+                for table, column in (("users", "name"), ("orders", "user_id"))
+            ]
+        if "pg_total_relation_size" in query:
+            return [MockCell({"rel_size": 10000})]
+        if "FROM pg_stats" in query:
+            return [MockCell({"total_width": 8, "total_distinct": 50})]
+        raise AssertionError(f"Unexpected test query: {query}")
 
     async_sql_driver.execute_query = AsyncMock(side_effect=mock_execute_query)
 

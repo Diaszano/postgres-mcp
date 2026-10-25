@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from postgres_mcp.database_config import parse_database_config
+from postgres_mcp.security.errors import DatabaseNotAllowedError
 from postgres_mcp.server import AccessMode
 from postgres_mcp.server import get_object_details
 from postgres_mcp.server import get_sql_driver
@@ -157,7 +158,8 @@ async def test_legacy_rejects_database_other_than_bootstrap(access_mode):
             async with get_sql_driver("app_testing"):
                 pytest.fail("legacy mode must not open another database")
     message = str(excinfo.value)
-    assert "'app_testing'" in message
+    assert "DATABASE_AUTO_DISCOVER=true" in message
+    assert "app_testing" not in message
     assert "app_main" not in message and "s3cret" not in message and "db.internal" not in message
     assert registry.requested == []
 
@@ -185,9 +187,10 @@ async def test_legacy_without_known_bootstrap_rejects_any_explicit_database():
         patch("postgres_mcp.server.database_config", None),
         patch("postgres_mcp.server.registry", None),
     ):
-        with pytest.raises(ValueError, match="'postgres'"):
+        with pytest.raises(DatabaseNotAllowedError) as exc:
             async with get_sql_driver("postgres"):
                 pass
+        assert "postgres" not in str(exc.value)
 
 
 # --- Task 11: schema tools routed to the selected database ---
@@ -266,7 +269,7 @@ async def test_denied_database_never_queries(discovery, call):
         @asynccontextmanager
         async def acquire(self, database=None):
             if database == "secret_db":
-                raise ValueError("Database 'secret_db' is not available")
+                raise DatabaseNotAllowedError("Database 'secret_db' is not available")
             async with super().acquire(database) as pool:
                 yield pool
 
@@ -274,7 +277,8 @@ async def test_denied_database_never_queries(discovery, call):
     execute = AsyncMock()
     with patch("postgres_mcp.server.registry", denying), patch.object(SqlDriver, "_execute_with_connection", execute):
         text = (await call("secret_db"))[0].text
-    assert text == "Error: Database 'secret_db' is not available"
+    assert text == "Error: The requested database is not available."
+    assert "secret_db" not in text
     execute.assert_not_called()
     assert denying.pools == {}
 
@@ -289,7 +293,8 @@ async def test_legacy_denied_database_never_queries_via_tools(call):
         patch.object(SqlDriver, "_execute_with_connection", execute),
     ):
         text = (await call("app_testing"))[0].text
-    assert text.startswith("Error: ") and "'app_testing'" in text
+    assert text == "Error: The requested database is not available."
+    assert "app_testing" not in text
     execute.assert_not_called()
 
 
@@ -342,7 +347,8 @@ async def test_list_databases_error_is_reported_not_raised():
     reg = _InfoRegistry(error=RuntimeError("Database discovery is unavailable"))
     with patch("postgres_mcp.server.database_config", _config(True)), patch("postgres_mcp.server.registry", reg):
         text = (await server.list_databases())[0].text
-    assert text == "Error: Database discovery is unavailable"
+    assert text == "Error: The operation failed."
+    assert "Database discovery is unavailable" not in text
 
 
 @pytest.mark.asyncio
@@ -470,7 +476,8 @@ async def test_startup_degraded_does_not_list_falsely(monkeypatch):
         await server.main()
         assert server.registry is not None
         text = (await server.list_databases())[0].text
-    assert text == "Error: Database discovery is unavailable"
+    assert text == "Error: The database is temporarily unavailable."
+    assert "boom s3cret" not in text
 
 
 # --- Task 12: execute_sql and explain_query routed to the selected database ---
@@ -505,6 +512,50 @@ async def test_execute_sql_routes_by_database(discovery):
     assert discovery.leases == {"app_testing": 0, "app_main": 0}
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("access_mode", [AccessMode.RESTRICTED, AccessMode.UNRESTRICTED])
+async def test_database_selection_and_access_mode_unchanged(discovery, monkeypatch, access_mode):
+    from postgres_mcp.query_limits.config import QueryBudgetConfig
+    from postgres_mcp.query_limits.results import BoundedQueryResult
+
+    monkeypatch.setattr(server, "query_budget_config", QueryBudgetConfig(enabled=True))
+    monkeypatch.setattr(server, "current_access_mode", access_mode)
+    calls = []
+
+    async def bounded(driver, query, **limits):
+        name = next(name for name, pool in discovery.pools.items() if pool is driver.conn)
+        assert discovery.leases[name] == 1
+        calls.append(name)
+        return BoundedQueryResult([{"db": name}], 1, False, None, 0, limits["timeout_seconds"])
+
+    with patch.object(SqlDriver, "execute_bounded_query", bounded):
+        selected = (await execute_sql("SELECT current_database()", "app_testing"))[0].text
+        default = (await execute_sql("SELECT current_database()"))[0].text
+        if access_mode == AccessMode.RESTRICTED:
+            assert "not allowed" in (await execute_sql("SELECT secret_function()"))[0].text
+    assert '"db":"app_testing"' in selected
+    assert '"db":"app_main"' in default
+    assert calls == ["app_testing", "app_main"]
+    assert discovery.leases == {"app_testing": 0, "app_main": 0}
+
+
+@pytest.mark.asyncio
+async def test_guarded_unknown_database_never_falls_back(discovery, monkeypatch):
+    from postgres_mcp.query_limits.config import QueryBudgetConfig
+
+    @asynccontextmanager
+    async def reject(database=None):
+        raise DatabaseNotAllowedError("private database")
+        yield
+
+    monkeypatch.setattr(server, "query_budget_config", QueryBudgetConfig(enabled=True))
+    monkeypatch.setattr(discovery, "acquire", reject)
+    with patch.object(SqlDriver, "execute_bounded_query", AsyncMock()) as bounded:
+        assert (await execute_sql("SELECT 1", "unknown"))[0].text == "Error: The requested database is not available."
+    bounded.assert_not_called()
+    assert discovery.pools == {}
+
+
 _EXPLAIN_CALLS = [
     # Direct calls bypass FastMCP, so Field() defaults must be passed explicitly.
     ("explain", lambda db: explain_query("SELECT 1", False, [], database=db)),
@@ -517,7 +568,16 @@ _EXPLAIN_CALLS = [
 @pytest.mark.asyncio
 async def test_explain_query_routes_by_database(discovery, call):
     calls: list[tuple[str, str]] = []
-    with patch.object(SqlDriver, "_execute_with_connection", _routing_execute(discovery, calls)):
+
+    @asynccontextmanager
+    async def fake_database_session(database=None, **options):
+        async with get_sql_driver(database) as driver:
+            yield driver
+
+    with (
+        patch.object(SqlDriver, "_execute_with_connection", _routing_execute(discovery, calls)),
+        patch("postgres_mcp.server.database_session", fake_database_session),
+    ):
         selected = (await call("app_testing"))[0].text
         selected_calls = list(calls)
         calls.clear()
@@ -535,8 +595,11 @@ def test_execute_sql_and_explain_signatures_keep_legacy_defaults():
     import inspect
 
     execute_params = inspect.signature(execute_sql).parameters
-    assert list(execute_params) == ["sql", "database"]
+    assert list(execute_params) == ["sql", "database", "max_rows", "timeout_seconds", "page_size", "pagination"]
     assert execute_params["sql"].default.default == "all"
+    assert execute_params["database"].default is None
+    assert execute_params["max_rows"].default is None
+    assert execute_params["timeout_seconds"].default is None
     explain_params = inspect.signature(explain_query).parameters
     assert list(explain_params) == ["sql", "analyze", "hypothetical_indexes", "database"]
     assert explain_params["analyze"].default.default is False
@@ -556,11 +619,18 @@ async def test_index_tools_use_database_specific_driver(method):
 
     selected = MagicMock(name="selected_driver")
     requested: list[str | None] = []
+    session_requests: list[dict] = []
 
     @asynccontextmanager
     async def fake_get_sql_driver(database=None):
         requested.append(database)
         yield selected
+
+    @asynccontextmanager
+    async def fake_database_session(database=None, **options):
+        session_requests.append(options)
+        async with fake_get_sql_driver(database) as driver:
+            yield driver
 
     presentation = MagicMock()
     presentation.analyze_workload = AsyncMock(return_value="ok")
@@ -570,6 +640,8 @@ async def test_index_tools_use_database_specific_driver(method):
     top.get_top_queries_by_time = AsyncMock(return_value="ok")
     with (
         patch("postgres_mcp.server.get_sql_driver", fake_get_sql_driver),
+        patch("postgres_mcp.server.database_session", fake_database_session),
+        patch("postgres_mcp.server.current_access_mode", AccessMode.UNRESTRICTED),
         patch("postgres_mcp.server.DatabaseTuningAdvisor") as dta,
         patch("postgres_mcp.server.LLMOptimizerTool") as llm,
         patch("postgres_mcp.server.TextPresentation", return_value=presentation) as text_presentation,
@@ -581,6 +653,8 @@ async def test_index_tools_use_database_specific_driver(method):
         await get_top_queries(sort_by="mean_time", limit=3, database="app_two")
 
     assert requested == ["app_two"] * 4
+    assert len(session_requests) == (2 if method == "dta" else 0)
+    assert all(options["restricted"] is False for options in session_requests)
     tuner = dta if method == "dta" else llm
     assert [c.args[0] for c in tuner.call_args_list] == [selected, selected]
     assert [c.args[0] for c in text_presentation.call_args_list] == [selected, selected]
@@ -647,17 +721,17 @@ async def test_health_legacy_positional_order():
 
 
 @pytest.mark.parametrize(
-    "exc",
+    "exc, expected",
     [
-        DatabaseUnavailableError("db gone"),
-        DiscoveryUnavailableError("no discovery"),
-        DatabaseConfigurationError("bad cfg"),
-        PoolCapacityError("full"),
-        ValueError("Database 'x' is not available"),
+        (DatabaseUnavailableError("db gone"), "The database is temporarily unavailable."),
+        (DiscoveryUnavailableError("no discovery"), "The database is temporarily unavailable."),
+        (DatabaseConfigurationError("bad cfg"), "The requested database is not available."),
+        (PoolCapacityError("full"), "The database connection pool is at capacity."),
+        (ValueError("Database 'x' is not available"), "The operation failed."),
     ],
 )
 @pytest.mark.asyncio
-async def test_health_reports_expected_errors_as_error_response(exc):
+async def test_health_reports_expected_errors_as_error_response(exc, expected):
     @asynccontextmanager
     async def boom(database=None):
         raise exc
@@ -665,7 +739,8 @@ async def test_health_reports_expected_errors_as_error_response(exc):
 
     with patch("postgres_mcp.server.get_sql_driver", boom):
         text = (await analyze_db_health("all", "x"))[0].text
-    assert text == f"Error: {exc}"
+    assert text == f"Error: {expected}"
+    assert str(exc) not in text
 
 
 @pytest.mark.asyncio
@@ -675,8 +750,10 @@ async def test_health_does_not_swallow_unexpected_errors():
         raise RuntimeError("bug")
         yield  # pragma: no cover
 
-    with patch("postgres_mcp.server.get_sql_driver", boom), pytest.raises(RuntimeError):
-        await analyze_db_health("all", "x")
+    with patch("postgres_mcp.server.get_sql_driver", boom):
+        res = await analyze_db_health("all", "x")
+        assert res.isError is True
+        assert res.structuredContent["error"]["code"] == "INTERNAL_ERROR"
 
 
 @pytest.mark.asyncio
@@ -768,10 +845,10 @@ async def _tools_after_startup(monkeypatch, argv, env):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("argv,env", [([], URI), ([], DISCOVER)], ids=["legacy", "discovery"])
-async def test_contract_nine_legacy_tools_plus_list_databases(monkeypatch, argv, env):
+async def test_contract_nine_legacy_tools_plus_database_list_and_continuation(monkeypatch, argv, env):
     tools = await _tools_after_startup(monkeypatch, argv, env)
-    assert set(tools) == LEGACY_TOOLS | {"list_databases"}
-    assert len(tools) == 10
+    assert set(tools) == LEGACY_TOOLS | {"list_databases", "fetch_query_page"}
+    assert len(tools) == 11
 
 
 @pytest.mark.asyncio

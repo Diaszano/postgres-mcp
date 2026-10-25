@@ -17,7 +17,6 @@ from ..sql import TableAliasVisitor
 from .index_opt_base import IndexRecommendation
 from .index_opt_base import IndexTuningBase
 from .index_opt_base import candidate_str
-from .index_opt_base import pp_list
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +71,7 @@ class DatabaseTuningAdvisor(IndexTuningBase):
         # Get existing indexes
         existing_index_defs: set[str] = {idx["definition"] for idx in await self._get_existing_indexes()}
 
-        logger.debug(f"Existing indexes ({len(existing_index_defs)}): {pp_list(list(existing_index_defs))}")
+        logger.debug("Existing indexes: %d", len(existing_index_defs))
 
         # generate initial candidates
         all_candidates = await self.generate_candidates(query_weights, existing_index_defs)
@@ -123,7 +122,7 @@ class DatabaseTuningAdvisor(IndexTuningBase):
         return best_config
 
     async def generate_candidates(self, workload: list[tuple[str, SelectStmt, float]], existing_defs: set[str]) -> list[IndexRecommendation]:
-        """Generates index candidates from queries, with batch creation."""
+        """Generate index candidates from queries and estimate their sizes."""
         table_columns_usage = {}  # table -> {col -> usage_count}
         # Extract columns from all queries
         for _q, stmt, _ in workload:
@@ -163,14 +162,10 @@ class DatabaseTuningAdvisor(IndexTuningBase):
         self.dta_trace(f"Filtered to {len(filtered_candidates)} after removing existing indexes.")
         self.dta_trace(f"Filtered to {len(condition_filtered1)} after removing unused columns.")
         self.dta_trace(f"Filtered to {len(condition_filtered)} after removing long text columns.")
-        # Batch create all hypothetical indexes and store their size estimates
+        # Create all hypothetical indexes and store their size estimates
         if len(condition_filtered) > 0:
-            query = "SELECT hypopg_create_index({});" * len(condition_filtered)
-            await SafeSqlDriver.execute_param_query(
-                self.sql_driver,
-                query,
-                [idx.definition for idx in condition_filtered],
-            )
+            for idx in condition_filtered:
+                await SafeSqlDriver.execute_param_query(self.sql_driver, "SELECT hypopg_create_index({});", [idx.definition])
 
             # Get estimated sizes without resetting indexes yet
             result = await self.sql_driver.execute_query(

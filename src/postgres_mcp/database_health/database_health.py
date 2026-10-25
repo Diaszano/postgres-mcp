@@ -6,6 +6,8 @@ from typing import List
 
 import mcp.types as types
 
+from ..security.errors import log_public_error
+from ..security.errors import to_public_error
 from .buffer_health_calc import BufferHealthCalc
 from .connection_health_calc import ConnectionHealthCalc
 from .constraint_health_calc import ConstraintHealthCalc
@@ -102,5 +104,5 @@ class DatabaseHealthTool:
 
             return result if result else "No health checks were performed."
         except Exception as e:
-            logger.error(f"Error calculating database health: {e}", exc_info=True)
-            return f"Error calculating database health: {e}"
+            log_public_error(logger, "calculate_database_health", e)
+            return to_public_error(e).message
