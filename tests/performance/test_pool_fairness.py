@@ -1,6 +1,5 @@
 import asyncio
-from unittest.mock import AsyncMock
-from unittest.mock import MagicMock
+
 import pytest
 
 from postgres_mcp.query_limits.admission import QueryAdmission

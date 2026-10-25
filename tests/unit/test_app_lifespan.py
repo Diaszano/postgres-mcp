@@ -1,8 +1,8 @@
 from unittest.mock import AsyncMock
+
 import pytest
 
 from postgres_mcp.app import create_mcp_app
-from postgres_mcp.database_config import DatabaseConfig
 from postgres_mcp.runtime import AppRuntime
 
 

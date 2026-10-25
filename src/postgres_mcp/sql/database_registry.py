@@ -159,6 +159,10 @@ class DatabaseRegistry:
         # Shielded: cancelling close_all must not cancel the pool closes themselves.
         await asyncio.shield(asyncio.gather(*self._closers))
 
+    async def close(self) -> None:
+        """Alias for close_all."""
+        await self.close_all()
+
     def _ensure_running(self) -> None:
         if self._shut_down:
             raise DatabaseUnavailableError("The database registry is shut down")

@@ -7,7 +7,6 @@ import os
 import signal
 import sys
 from collections.abc import AsyncIterator
-from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from dataclasses import replace
@@ -17,7 +16,6 @@ from typing import Annotated
 from typing import Any
 from typing import List
 from typing import Literal
-from typing import Union
 
 import mcp.types as types
 from mcp.server.auth.middleware.auth_context import get_access_token
@@ -44,8 +42,6 @@ from .index.llm_opt import LLMOptimizerTool
 from .index.presentation import TextPresentation
 from .mcp_response import ToolResult
 from .mcp_response import error_result
-from .mcp_response import format_mcp_result
-from .mcp_response import success_result
 from .pagination.cursors import InMemoryCursorStore
 from .pagination.service import PaginationService
 from .query_limits.admission import QueryAdmission
@@ -65,11 +61,7 @@ from .sql import SafeSqlDriver
 from .sql import SqlDriver
 from .sql import check_hypopg_installation_status
 from .sql.database_catalog import DatabaseCatalog
-from .sql.database_catalog import DatabaseConfigurationError
-from .sql.database_catalog import DiscoveryUnavailableError
 from .sql.database_registry import DatabaseRegistry
-from .sql.database_registry import DatabaseUnavailableError
-from .sql.database_registry import PoolCapacityError
 from .sql.database_session import database_session
 from .top_queries import TopQueriesCalc
 
@@ -159,7 +151,7 @@ database_config: DatabaseConfig | None = None  # None until startup parses it: l
 registry: DatabaseRegistry | None = None  # used only when database_config.auto_discover
 
 
-def _wrap_driver(conn: Any) -> Union[SqlDriver, SafeSqlDriver]:
+def _wrap_driver(conn: Any) -> SqlDriver | SafeSqlDriver:
     """Single wrap point, so no path reaches the pool without the access-mode guard."""
     base_driver = SqlDriver(conn=conn)
 
@@ -180,7 +172,7 @@ def _bootstrap_database() -> str | None:
 
 
 @asynccontextmanager
-async def get_sql_driver(database: str | None = None) -> AsyncIterator[Union[SqlDriver, SafeSqlDriver]]:
+async def get_sql_driver(database: str | None = None) -> AsyncIterator[SqlDriver | SafeSqlDriver]:
     """Yield a driver bound to `database` for the whole `async with` body.
 
     Discovery mode holds a registry lease for the body; legacy mode uses the bootstrap pool

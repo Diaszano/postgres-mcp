@@ -959,7 +959,7 @@ class SafeSqlDriver(SqlDriver):
                         params=params,
                         force_readonly=True,
                     )
-            except asyncio.TimeoutError as e:
+            except TimeoutError as e:
                 log_public_error(logger, "restricted_query_timeout", e, level=logging.WARNING)
                 raise PublicToolError("QUERY_TIMEOUT", "The query exceeded its time limit.", retryable=True) from e
             except Exception as e:

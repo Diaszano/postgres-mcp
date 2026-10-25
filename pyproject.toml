@@ -27,10 +27,6 @@ build-backend = "hatchling.build"
 [project.scripts]
 postgres-mcp = "postgres_mcp:main"
 
-# [tool.pyright]
-# venvPath = "."
-# venv = ".venv"
-
 [tool.pytest.ini_options]
 pythonpath = ["./src"]
 asyncio_default_fixture_loop_scope = "function"
@@ -90,6 +86,8 @@ force-single-line = true
 known-first-party = ["postgres-mcp"]
 
 [tool.pyright]
+venvPath = "."
+venv = ".venv"
 typeCheckingMode = "standard"
 pythonVersion = "3.12"
 reportMissingTypeStubs = false

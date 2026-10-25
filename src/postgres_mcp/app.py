@@ -13,11 +13,11 @@ def create_mcp_app(runtime: AppRuntime | None = None, name: str = "postgres-mcp"
     active_runtime = runtime if runtime is not None else AppRuntime()
 
     @asynccontextmanager
-    async def app_lifespan(server: FastMCP) -> AsyncIterator[dict]:
+    async def app_lifespan(server: FastMCP) -> AsyncIterator[dict[str, object]]:
         yield {"runtime": active_runtime}
         await active_runtime.close()
 
     app = FastMCP(name, lifespan=app_lifespan)
     # Store runtime reference on the FastMCP instance for direct test access
-    setattr(app, "runtime", active_runtime)
+    app.runtime = active_runtime  # type: ignore[attr-defined]
     return app

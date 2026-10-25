@@ -39,9 +39,7 @@ def test_bad_query_budget_env_fails_closed(name, value):
 
 def test_default_cannot_exceed_hard_limit():
     with pytest.raises(ValueError, match="cannot exceed"):
-        parse_query_budget_config(
-            {"DATABASE_QUERY_DEFAULT_MAX_ROWS": "600", "DATABASE_QUERY_HARD_MAX_ROWS": "500"}
-        )
+        parse_query_budget_config({"DATABASE_QUERY_DEFAULT_MAX_ROWS": "600", "DATABASE_QUERY_HARD_MAX_ROWS": "500"})
 
 
 def test_disabled_mode_warning_on_remote(caplog):
