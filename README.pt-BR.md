@@ -88,11 +88,11 @@ Escolha um dos métodos a seguir para instalar o Postgres MCP Pro:
 
 #### Opção 1: usando Docker
 
-Baixe a imagem Docker do servidor MCP Postgres MCP Pro.
+Baixe a imagem Docker do servidor MCP Postgres MCP Pro via GitHub Container Registry:
 Essa imagem contém todas as dependências necessárias, oferecendo uma forma confiável de executar o Postgres MCP Pro em diversos ambientes.
 
 ```bash
-docker pull crystaldba/postgres-mcp
+docker pull ghcr.io/diaszano/postgres-mcp:latest
 ```
 
 
@@ -144,7 +144,7 @@ Agora você vai editar a seção `mcpServers` do arquivo de configuração.
         "DATABASE_URI",
         "-e",
         "DATABASE_DOCKER_REMAP_LOCALHOST",
-        "crystaldba/postgres-mcp",
+        "ghcr.io/diaszano/postgres-mcp:latest",
         "--access-mode=unrestricted"
       ],
       "env": {

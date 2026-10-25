@@ -43,3 +43,31 @@ def test_contributing_defines_conventions_and_merge_policy() -> None:
     assert "squash" in content.lower(), "Must specify squash merge strategy"
     assert "feature/" in content and "bugfix/" in content, "Must document conventional branch categories"
     assert "TDD" in content or "test" in content.lower(), "Must require testing"
+
+
+def test_readme_ghcr_commands_match_image() -> None:
+    root = Path(__file__).resolve().parents[2]
+    readme_en = (root / "README.md").read_text(encoding="utf-8")
+    readme_pt = (root / "README.pt-BR.md").read_text(encoding="utf-8")
+
+    for readme, lang in [(readme_en, "README.md"), (readme_pt, "README.pt-BR.md")]:
+        assert "ghcr.io/diaszano/postgres-mcp" in readme, f"{lang} must reference ghcr.io/diaszano/postgres-mcp"
+        assert "docker pull crystaldba/postgres-mcp" not in readme, f"{lang} must not reference docker pull crystaldba/postgres-mcp"
+
+
+def test_no_crystaldba_publish_target() -> None:
+    root = Path(__file__).resolve().parents[2]
+    workflows = root / ".github" / "workflows"
+
+    for wf in workflows.glob("*.yml"):
+        content = wf.read_text(encoding="utf-8")
+        assert "crystaldba/postgres-mcp" not in content, f"{wf.name} contains reference to upstream publish target"
+
+
+def test_justfile_has_no_manual_release() -> None:
+    root = Path(__file__).resolve().parents[2]
+    justfile = (root / "justfile").read_text(encoding="utf-8")
+
+    # Only automated CI releases are allowed, no local manual release recipe
+    lines = [line.strip() for line in justfile.splitlines()]
+    assert "release:" not in lines, "justfile must not have a manual 'release:' target"
