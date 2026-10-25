@@ -143,8 +143,8 @@ class PaginationService:
         )
         while True:
             capped = result.total_returned_rows == state.max_rows
-            result.has_more = False if capped else more
-            continuing = result.has_more is not False
+            result.has_more = False if capped and more is not None else more
+            continuing = not capped and result.has_more is not False
             # Store tokens are always 43 URL-safe ASCII characters, so replacement preserves encoded size.
             result.next_cursor = "x" * 43 if continuing else None
             result.expires_in_seconds = 300 if continuing else 0
