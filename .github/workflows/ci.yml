@@ -196,3 +196,16 @@ jobs:
           no_proxy: "*"
         run: |
           uv run pytest -q tests/integration
+
+  release:
+    name: Delivery Handoff Gate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - conventions
+      - lint
+      - typecheck
+      - unit
+      - package
+      - integration
+    uses: ./.github/workflows/release.yml
+    secrets: inherit
