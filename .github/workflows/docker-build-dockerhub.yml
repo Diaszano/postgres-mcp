@@ -86,3 +86,13 @@ jobs:
           tags: ${{ steps.docker_meta.outputs.tags }}
           cache-from: type=registry,ref=crystaldba/postgres-mcp:buildcache
           cache-to: type=registry,ref=crystaldba/postgres-mcp:buildcache,mode=max
+
+      - name: Run Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: crystaldba/postgres-mcp:${{ needs.prepare.outputs.version }}
+          format: "table"
+          exit-code: "0"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
