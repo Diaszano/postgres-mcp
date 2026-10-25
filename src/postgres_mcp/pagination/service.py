@@ -147,7 +147,7 @@ class PaginationService:
             continuing = not capped and result.has_more is not False
             # Store tokens are always 43 URL-safe ASCII characters, so replacement preserves encoded size.
             result.next_cursor = "x" * 43 if continuing else None
-            result.expires_in_seconds = 300 if continuing else 0
+            result.expires_in_seconds = self._cursors.ttl_seconds if continuing else 0
             if capped and more is not False:
                 result.limit_reached = "max_rows"
             try:

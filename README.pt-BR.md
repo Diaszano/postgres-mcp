@@ -354,12 +354,32 @@ uvx postgres-mcp
 | `DATABASE_QUERY_HARD_TIMEOUT_SECONDS` | `60` | Tempo limite máximo que uma chamada da ferramenta pode solicitar. |
 | `DATABASE_QUERY_MAX_RESULT_BYTES` | `2097152` | Tamanho máximo do JSON UTF-8 de `CallToolResult` do MCP, incluindo texto escapado, saída estruturada e metadados; exclui o envelope JSON-RPC e o enquadramento do transporte. Valor máximo configurável de 64 MiB. |
 | `DATABASE_QUERY_MAX_CONCURRENCY` | `4` | Número máximo de execuções SQL simultâneas com limites; valor máximo configurável de 256. |
+| `DATABASE_PAGINATION_ENABLED` | `true` | Permite paginação de consultas quando solicitada explicitamente. |
+| `DATABASE_PAGINATION_DEFAULT_PAGE_SIZE` | `100` | Quantidade padrão de linhas por página; não pode exceder o tamanho máximo de página. |
+| `DATABASE_PAGINATION_MAX_PAGE_SIZE` | `1000` | Tamanho máximo solicitado por página. As páginas também respeitam o saldo do limite total de linhas e o limite de bytes da resposta. |
+| `DATABASE_PAGINATION_CURSOR_TTL_SECONDS` | `300` | Validade do cursor em segundos após cada página concluída. |
+| `DATABASE_PAGINATION_MAX_ACTIVE_CURSORS` | `100` | Quantidade máxima de cursores armazenados; novas consultas podem remover o cursor não reservado mais antigo. |
 
 Ambas as variáveis de lista aceitam uma lista separada por vírgulas (`app,testing`; espaços ao redor dos nomes são removidos) ou, quando o valor começa com `[`, um array JSON de strings (`["app", "name,with,comma"]`).
 Use a forma JSON para nomes que contenham vírgulas. Os nomes nunca são convertidos para minúsculas nem normalizados de outra forma.
 As variáveis numéricas devem ser inteiros maiores ou iguais a 1; valores inválidos interrompem o servidor na inicialização com um erro que nunca inclui a URI nem a senha. As configurações de limites de consulta também exigem inteiros positivos; os valores padrão de linhas e tempo limite não podem exceder seus limites máximos. O limite de linhas é 10.000.000 e o de tempo limite é 3.600 segundos. Os limites ficam desabilitados por padrão durante a migração.
 
-**Migração de `execute_sql` para os limites de consulta.** Antes de definir `DATABASE_QUERY_GUARDRAILS_ENABLED=true`, migre os chamadores: o modo habilitado aceita apenas uma consulta segura, somente leitura e que retorna linhas, inclusive com `--access-mode=unrestricted`. Escritas/DDL, múltiplas instruções, `SHOW`, `EXPLAIN`, `SELECT INTO`, CTEs que modificam dados e cláusulas de bloqueio de linhas são rejeitados. Separe lotes somente leitura em chamadas individuais, use `explain_query` para planos e mova escritas ou outras instruções incompatíveis para um cliente de banco de dados separado e autorizado antes de habilitar a opção. Com a opção desabilitada e sem argumentos de limite, `execute_sql` mantém o comportamento de instruções e o formato de resultado legados. A paginação permanece indisponível.
+**Migração de `execute_sql` para os limites de consulta.** Antes de definir `DATABASE_QUERY_GUARDRAILS_ENABLED=true`, migre os chamadores: o modo habilitado aceita apenas uma consulta segura, somente leitura e que retorna linhas, inclusive com `--access-mode=unrestricted`. Escritas/DDL, múltiplas instruções, `SHOW`, `EXPLAIN`, `SELECT INTO`, CTEs que modificam dados e cláusulas de bloqueio de linhas são rejeitados. Separe lotes somente leitura em chamadas individuais, use `explain_query` para planos e mova escritas ou outras instruções incompatíveis para um cliente de banco de dados separado e autorizado antes de habilitar a opção. Com a opção desabilitada e sem argumentos de limite, `execute_sql` mantém o comportamento de instruções e o formato de resultado legados. A paginação explícita usa os mesmos limites de linhas, tempo, bytes e concorrência mesmo quando a opção de limites está desabilitada.
+
+**Paginação de consultas.** Chamadas existentes de `execute_sql(sql, database)` mantêm `pagination="none"`. Informar `page_size` sem um modo explícito gera erro. Para paginar:
+
+```python
+execute_sql("SELECT id, name FROM users ORDER BY id", "app", max_rows=250, page_size=100, pagination="keyset")
+fetch_query_page(cursor="<next_cursor da resposta anterior>", page_size=100)
+```
+
+Os modos `offset` e `keyset` aceitam um SELECT conservador sobre uma única tabela, com uma coluna de ordenação ascendente incluída na projeção e verificada como única e não nula. Junções, agregações, aliases nas colunas projetadas, LIMIT/OFFSET existentes e expressões incompatíveis são rejeitados. A paginação é somente leitura em ambos os modos de acesso. `max_rows` limita toda a sequência; limites de linhas e tempo omitidos usam os padrões de consulta. O tamanho padrão de página é 100, limitado pelo saldo de linhas e pelos bytes da resposta. As configurações numéricas de paginação exigem inteiros positivos; o tamanho padrão não pode exceder o máximo. Valores inválidos interrompem a inicialização.
+
+As páginas retornam JSON no conteúdo de texto, incluindo `rows`, `returned_rows`, `total_returned_rows`, `max_rows`, `page_size`, `truncated`, `has_more`, `next_cursor` e `expires_in_seconds`. Continue enquanto houver `next_cursor`; `has_more` pode ser nulo quando o limite de bytes impede determinar se existem mais linhas. A página final não tem cursor. Atingir `max_rows` encerra a sequência mesmo que existam mais linhas na tabela.
+
+A continuação aceita apenas o cursor e o tamanho opcional de página, dentro do máximo configurado. SQL, banco, modo e limites totais não podem mudar. Cada página verifica novamente a autorização do banco e recebe um novo prazo; nenhuma conexão ou transação fica aberta entre páginas. A consistência é de melhor esforço, sem snapshot compartilhado; alterações concorrentes podem modificar os resultados.
+
+Cursores são opacos, vinculados à credencial HTTP autenticada por um hash SHA-256 (ou ao processo/sessão stdio atual) e armazenados apenas no processo servidor. Cada página concluída consome o token e emite outro quando necessário. Reutilizar um token consumido falha, inclusive após entrega incerta; repita uma chamada com o token original apenas se ele não foi consumido. Por padrão, os cursores expiram após 300 segundos e podem ser removidos ao atingir a capacidade. Reinício, encerramento, outro processo servidor ou outra credencial autenticada invalidam a continuação. Renovar ou rotacionar o token bearer também invalida seus cursores. Não compartilhe cursores nem suponha portabilidade entre workers.
 
 **O que é descobrível.** Um banco de dados só é listado se não for um template, aceitar conexões, a role tiver `CONNECT` nele e passar pelas listas de permissão e de bloqueio.
 O banco de dados em `DATABASE_URI` é apenas a conexão de bootstrap: ele não é especial.
@@ -479,7 +499,7 @@ Escolhemos essa abordagem porque o [ecossistema de clientes MCP](https://modelco
 Isso contrasta com a abordagem de outros servidores MCP para Postgres, incluindo o [Reference Postgres MCP Server](https://github.com/modelcontextprotocol/servers-archived/tree/main/src/postgres), que usam [recursos MCP](https://modelcontextprotocol.io/docs/concepts/resources) para expor informações de esquema.
 
 
-Ferramentas do Postgres MCP Pro (todas, exceto `list_databases`, aceitam um argumento opcional `database`, veja [Múltiplos bancos de dados](#multiple-databases-optional)):
+Ferramentas do Postgres MCP Pro (todas, exceto `list_databases` e `fetch_query_page`, aceitam um argumento opcional `database`, veja [Múltiplos bancos de dados](#multiple-databases-optional)):
 
 | Nome da ferramenta | Descrição |
 |--------------------|-----------|
@@ -487,7 +507,8 @@ Ferramentas do Postgres MCP Pro (todas, exceto `list_databases`, aceitam um argu
 | `list_schemas` | Lista todos os esquemas de banco de dados disponíveis na instância PostgreSQL. |
 | `list_objects` | Lista objetos de banco de dados (tabelas, views, sequências, extensões) dentro de um esquema especificado. |
 | `get_object_details` | Fornece informações sobre um objeto de banco de dados específico, por exemplo, as colunas, restrições e índices de uma tabela. |
-| `execute_sql` | Executa instruções SQL no banco de dados, com limitações de somente leitura quando conectado em modo restricted. |
+| `execute_sql` | Executa SQL, com paginação opcional somente leitura nos modos `offset` ou `keyset`. |
+| `fetch_query_page` | Continua uma consulta paginada usando apenas o cursor e o tamanho opcional de página. |
 | `explain_query` | Obtém o plano de execução de uma consulta SQL, descrevendo como o PostgreSQL a processará e expondo o modelo de custos do planejador de consultas. Pode ser invocada com índices hipotéticos para simular o comportamento após a adição de índices. |
 | `get_top_queries` | Informa as consultas SQL mais lentas com base no tempo total de execução, usando dados de `pg_stat_statements`. |
 | `analyze_workload_indexes` | Analisa a carga de trabalho do banco de dados para identificar consultas que consomem muitos recursos e, em seguida, recomenda os índices ideais para elas. |

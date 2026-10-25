@@ -46,14 +46,16 @@ class _Entry:
 
 
 class InMemoryCursorStore:
-    """Keep at most 100 cursors for 300 seconds; each instance is a stdio session.
+    """Keep bounded, expiring cursors; each instance is a stdio session.
 
     Oldest unreserved entries may be evicted; a fully reserved store is busy.
     A forked process must create its own store before issuing or consuming tokens.
     """
 
-    def __init__(self, *, clock: Callable[[], float] = time.monotonic) -> None:
+    def __init__(self, *, clock: Callable[[], float] = time.monotonic, ttl_seconds: int = 300, max_active_cursors: int = 100) -> None:
         self._clock = clock
+        self.ttl_seconds = ttl_seconds
+        self._max_active_cursors = max_active_cursors
         self._process_id = os.getpid()
         self._entries: dict[str, _Entry] = {}
         self._lock = Lock()
@@ -67,7 +69,7 @@ class InMemoryCursorStore:
         for key in [key for key, entry in self._entries.items() if entry.expires_at <= now and key != replacing]:
             del self._entries[key]
         evicted_key = replacing
-        if replacing is None and len(self._entries) >= 100:
+        if replacing is None and len(self._entries) >= self._max_active_cursors:
             evicted_key = next((key for key, entry in self._entries.items() if entry.reservation is None), None)
             if evicted_key is None:
                 raise PublicToolError("CURSOR_BUSY", "The query cursor store is busy.", retryable=True)
@@ -78,7 +80,7 @@ class InMemoryCursorStore:
                 break
         if evicted_key is not None:
             del self._entries[evicted_key]
-        self._entries[key] = _Entry(state, now + 300)
+        self._entries[key] = _Entry(state, now + self.ttl_seconds)
         return token
 
     def issue(self, state: CursorState) -> str:
