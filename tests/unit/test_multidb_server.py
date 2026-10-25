@@ -750,8 +750,10 @@ async def test_health_does_not_swallow_unexpected_errors():
         raise RuntimeError("bug")
         yield  # pragma: no cover
 
-    with patch("postgres_mcp.server.get_sql_driver", boom), pytest.raises(RuntimeError):
-        await analyze_db_health("all", "x")
+    with patch("postgres_mcp.server.get_sql_driver", boom):
+        res = await analyze_db_health("all", "x")
+        assert res.isError is True
+        assert res.structuredContent["error"]["code"] == "INTERNAL_ERROR"
 
 
 @pytest.mark.asyncio
