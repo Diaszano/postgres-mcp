@@ -14,6 +14,8 @@ from hashlib import sha256
 from threading import Lock
 from typing import Literal
 
+from ..observability.metrics import MetricsSink
+from ..observability.metrics import NoopMetrics
 from ..security.errors import PublicToolError
 from .eligibility import PageableQuery
 
@@ -52,10 +54,18 @@ class InMemoryCursorStore:
     A forked process must create its own store before issuing or consuming tokens.
     """
 
-    def __init__(self, *, clock: Callable[[], float] = time.monotonic, ttl_seconds: int = 300, max_active_cursors: int = 100) -> None:
+    def __init__(
+        self,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        ttl_seconds: int = 300,
+        max_active_cursors: int = 100,
+        metrics: MetricsSink | None = None,
+    ) -> None:
         self._clock = clock
         self.ttl_seconds = ttl_seconds
         self._max_active_cursors = max_active_cursors
+        self.metrics = metrics or NoopMetrics()
         self._process_id = os.getpid()
         self._entries: dict[str, _Entry] = {}
         self._lock = Lock()
@@ -80,13 +90,34 @@ class InMemoryCursorStore:
                 break
         if evicted_key is not None:
             del self._entries[evicted_key]
+            self.metrics.record_cursor("evict")
         self._entries[key] = _Entry(state, now + self.ttl_seconds)
+        self.metrics.record_cursor("issue")
         return token
 
     def issue(self, state: CursorState) -> str:
         with self._lock:
             self._check_process()
             return self._issue(state)
+
+    def create(self, sql: str, order_by: list[str] | tuple[str, ...] | str = "id", principal: str | None = None, database: str | None = None) -> str:
+        key_column = order_by[0] if isinstance(order_by, (list, tuple)) else str(order_by)
+        state = CursorState(
+            query=PageableQuery(sql=sql, key_column=key_column),
+            database=database,
+            mode="offset",
+            max_rows=1000,
+            timeout_seconds=30.0,
+            page_size=100,
+            principal=principal,
+        )
+        return self.issue(state)
+
+    def consume(self, token: str, principal: str | None = None) -> CursorState | None:
+        self.metrics.record_cursor("consume")
+        reservation = self.reserve(token, principal)
+        self.commit(reservation, None)
+        return reservation.state
 
     def _entry(self, key: str) -> _Entry:
         entry = self._entries.get(key)

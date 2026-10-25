@@ -8,6 +8,8 @@ from pglast.ast import SelectStmt
 from pglast.parser import ParseError
 from pglast.visitors import Visitor
 
+from ..observability.metrics import MetricsSink
+from ..observability.metrics import NoopMetrics
 from ..pagination.eligibility import PageableQuery
 from ..pagination.eligibility import inspect_pageable_select
 from ..pagination.planner import PageQuery
@@ -33,9 +35,15 @@ class _ReadOnlySelect(Visitor):
 
 
 class QueryExecutionService:
-    def __init__(self, get_driver: Callable[[str | None], AbstractAsyncContextManager[SqlDriver]], max_result_bytes: int):
+    def __init__(
+        self,
+        get_driver: Callable[[str | None], AbstractAsyncContextManager[SqlDriver]],
+        max_result_bytes: int,
+        metrics: MetricsSink | None = None,
+    ):
         self._get_driver = get_driver
         self._max_result_bytes = max_result_bytes
+        self.metrics = metrics or NoopMetrics()
 
     async def inspect_pageable(self, sql: str, database: str | None, mode: Literal["offset", "keyset"]) -> PageableQuery:
         async with self._get_driver(database) as driver:
@@ -48,16 +56,20 @@ class QueryExecutionService:
         try:
             statements = parse_sql(query_for_validation(sql, params))
         except ParseError as exc:
+            self.metrics.record_query(0.0, outcome="validation_failed", mode="unrestricted")
             raise _unsupported_query() from exc
         if len(statements) != 1 or not isinstance(statements[0].stmt, SelectStmt):
+            self.metrics.record_query(0.0, outcome="validation_failed", mode="unrestricted")
             raise _unsupported_query()
         _ReadOnlySelect()(statements)
         async with self._get_driver(database) as driver:
             options: dict[str, Any] = {"params": params} if params is not None else {}
-            return await driver.execute_bounded_query(
+            res = await driver.execute_bounded_query(
                 sql,  # type: ignore[arg-type]
                 max_rows=limits.max_rows,
                 max_result_bytes=self._max_result_bytes,
                 timeout_seconds=limits.timeout_seconds,
                 **options,
             )
+            self.metrics.record_query(res.execution_time_ms / 1000.0, outcome="success", mode="unrestricted")
+            return res
