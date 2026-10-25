@@ -350,12 +350,32 @@ uvx postgres-mcp
 | `DATABASE_QUERY_HARD_TIMEOUT_SECONDS` | `60` | Maximum timeout a tool call may request. |
 | `DATABASE_QUERY_MAX_RESULT_BYTES` | `2097152` | Maximum UTF-8 JSON size of the MCP `CallToolResult`, including escaped text, structured output and metadata; excludes the JSON-RPC envelope and transport framing. Maximum configurable value is 64 MiB. |
 | `DATABASE_QUERY_MAX_CONCURRENCY` | `4` | Maximum concurrent budgeted SQL executions; maximum configurable value is 256. |
+| `DATABASE_PAGINATION_ENABLED` | `true` | Allows explicitly requested query pagination. |
+| `DATABASE_PAGINATION_DEFAULT_PAGE_SIZE` | `100` | Default rows per page; cannot exceed the maximum page size. |
+| `DATABASE_PAGINATION_MAX_PAGE_SIZE` | `1000` | Maximum requested page size. Pages also respect the remaining logical row budget and response byte limit. |
+| `DATABASE_PAGINATION_CURSOR_TTL_SECONDS` | `300` | Cursor lifetime in seconds after each successful page. |
+| `DATABASE_PAGINATION_MAX_ACTIVE_CURSORS` | `100` | Maximum stored cursors; new queries may evict the oldest unreserved cursor. |
 
 Both list variables accept a comma-separated list (`app,testing`, spaces around names are trimmed) or, when the value starts with `[`, a JSON array of strings (`["app", "name,with,comma"]`).
 Use the JSON form for names that contain commas. Names are never lower-cased or otherwise normalized.
 Numeric variables must be integers of at least 1; invalid values stop the server at startup with an error that never includes the URI or password. Query guardrail settings are strict positive integers; default row and timeout values cannot exceed their hard limits. Row limits are capped at 10,000,000 and timeout limits at 3,600 seconds. Guardrails default to disabled during migration.
 
-**Migrating `execute_sql` to query guardrails.** Before setting `DATABASE_QUERY_GUARDRAILS_ENABLED=true`, migrate callers: enabled mode accepts only one safe read-only row-producing query, including with `--access-mode=unrestricted`. Writes/DDL, multiple statements, `SHOW`, `EXPLAIN`, `SELECT INTO`, modifying CTEs, and row-locking clauses are rejected. Split read-only batches into separate calls, use `explain_query` for plans, and move writes or other unsupported statements to a separate authorized database client before enabling the flag. With the flag disabled and budget arguments omitted, `execute_sql` keeps its legacy statement behavior and result shape. Pagination remains unavailable.
+**Migrating `execute_sql` to query guardrails.** Before setting `DATABASE_QUERY_GUARDRAILS_ENABLED=true`, migrate callers: enabled mode accepts only one safe read-only row-producing query, including with `--access-mode=unrestricted`. Writes/DDL, multiple statements, `SHOW`, `EXPLAIN`, `SELECT INTO`, modifying CTEs, and row-locking clauses are rejected. Split read-only batches into separate calls, use `explain_query` for plans, and move writes or other unsupported statements to a separate authorized database client before enabling the flag. With the flag disabled and budget arguments omitted, `execute_sql` keeps its legacy statement behavior and result shape. Explicit pagination uses the same row, time, byte and concurrency budgets even when the guardrails flag is disabled.
+
+**Query pagination.** Existing `execute_sql(sql, database)` calls keep `pagination="none"`. A `page_size` without an explicit mode is rejected. To page a query, call:
+
+```python
+execute_sql("SELECT id, name FROM users ORDER BY id", "app", max_rows=250, page_size=100, pagination="keyset")
+fetch_query_page(cursor="<next_cursor from the previous response>", page_size=100)
+```
+
+`offset` and `keyset` support a conservative single-table SELECT with one ascending, projected ordering column verified as unique and non-null. Joins, aggregates, aliases on projected columns, existing LIMIT/OFFSET, and unsupported expressions are rejected. Pagination is read-only in either access mode. `max_rows` caps the whole chain; omitted row/time limits use the query defaults. Default page size is 100, capped by the remaining rows and response bytes. Numeric pagination settings must be positive integers; the default page size cannot exceed its maximum. Invalid settings stop startup.
+
+Pages return JSON in the text content, including `rows`, `returned_rows`, `total_returned_rows`, `max_rows`, `page_size`, `truncated`, `has_more`, `next_cursor`, and `expires_in_seconds`. Continue while `next_cursor` is present; `has_more` may be null when the byte limit prevents determining whether more rows exist. The final page has no cursor. Reaching `max_rows` ends the chain even if the table contains more rows.
+
+Continuation accepts only the cursor and optional page size, which must remain within the configured maximum. SQL, database, mode and logical budgets cannot change. Each page rechecks database authorization and gets a fresh timeout; no database connection or transaction is held between pages. Results have best-effort consistency, without a shared snapshot, so concurrent writes may change results.
+
+Cursors are opaque, bound to the authenticated HTTP credential through a SHA-256 digest (or the current stdio process/session), and stored only in the server process. Each successful page consumes its token and issues a fresh one when needed. Reusing a consumed token fails, including after uncertain delivery; retry failed calls with the original token only when it was not consumed. Cursors expire after 300 seconds by default and may be evicted when capacity is reached. Restart, shutdown, a different server process or a different authenticated credential invalidates continuation. Refreshing or rotating the bearer token also invalidates its cursors. Do not share cursors or assume portability across workers.
 
 **What is discoverable.** A database is listed only if it is not a template, accepts connections, the role has `CONNECT` on it, and it passes the allow and deny lists.
 The database in `DATABASE_URI` is only the bootstrap connection: it is not special.
@@ -474,7 +494,7 @@ We chose this approach because the [MCP client ecosystem](https://modelcontextpr
 This contrasts with the approach of other Postgres MCP servers, including the [Reference Postgres MCP Server](https://github.com/modelcontextprotocol/servers-archived/tree/main/src/postgres), which use [MCP resources](https://modelcontextprotocol.io/docs/concepts/resources) to expose schema information.
 
 
-Postgres MCP Pro Tools (all except `list_databases` accept an optional `database` argument, see [Multiple Databases](#multiple-databases-optional)):
+Postgres MCP Pro Tools (all except `list_databases` and `fetch_query_page` accept an optional `database` argument, see [Multiple Databases](#multiple-databases-optional)):
 
 | Tool Name | Description |
 |-----------|-------------|
@@ -482,7 +502,8 @@ Postgres MCP Pro Tools (all except `list_databases` accept an optional `database
 | `list_schemas` | Lists all database schemas available in the PostgreSQL instance. |
 | `list_objects` | Lists database objects (tables, views, sequences, extensions) within a specified schema. |
 | `get_object_details` | Provides information about a specific database object, for example, a table's columns, constraints, and indexes. |
-| `execute_sql` | Executes SQL statements on the database, with read-only limitations when connected in restricted mode. |
+| `execute_sql` | Executes SQL statements, with optional read-only `offset` or `keyset` pagination. |
+| `fetch_query_page` | Continues a paginated query using only its cursor and optional page size. |
 | `explain_query` | Gets the execution plan for a SQL query describing how PostgreSQL will process it and exposing the query planner's cost model. Can be invoked with hypothetical indexes to simulate the behavior after adding indexes. |
 | `get_top_queries` | Reports the slowest SQL queries based on total execution time using `pg_stat_statements` data. |
 | `analyze_workload_indexes` | Analyzes the database workload to identify resource-intensive queries, then recommends optimal indexes for them. |

@@ -9,7 +9,9 @@ import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import asdict
+from dataclasses import replace
 from enum import Enum
+from hashlib import sha256
 from typing import Annotated
 from typing import Any
 from typing import List
@@ -17,6 +19,7 @@ from typing import Literal
 from typing import Union
 
 import mcp.types as types
+from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from psycopg.conninfo import conninfo_to_dict
@@ -36,6 +39,8 @@ from .explain import ExplainPlanTool
 from .index.index_opt_base import MAX_NUM_INDEX_TUNING_QUERIES
 from .index.llm_opt import LLMOptimizerTool
 from .index.presentation import TextPresentation
+from .pagination.cursors import InMemoryCursorStore
+from .pagination.service import PaginationService
 from .query_limits.admission import QueryAdmission
 from .query_limits.config import QueryBudgetConfig
 from .query_limits.config import parse_query_budget_config
@@ -91,6 +96,58 @@ current_access_mode = AccessMode.UNRESTRICTED
 shutdown_in_progress = False
 query_budget_config = QueryBudgetConfig()
 query_admission = QueryAdmission(query_budget_config.max_concurrency)
+pagination_enabled = True
+pagination_default_page_size = 100
+pagination_max_page_size = 1000
+cursor_store = InMemoryCursorStore()
+
+
+def configure_pagination() -> None:
+    global pagination_enabled, pagination_default_page_size, pagination_max_page_size, cursor_store
+
+    def positive_int(name: str, default: int) -> int:
+        raw = os.environ.get(name, str(default))
+        if not raw.isascii() or not raw.isdecimal() or int(raw) <= 0:
+            raise ValueError(f"{name} must be a positive integer")
+        return int(raw)
+
+    enabled = os.environ.get("DATABASE_PAGINATION_ENABLED", "true").lower()
+    if enabled not in {"true", "false", "1", "0", "yes", "no"}:
+        raise ValueError("DATABASE_PAGINATION_ENABLED must be a boolean")
+    default_size = positive_int("DATABASE_PAGINATION_DEFAULT_PAGE_SIZE", 100)
+    max_size = positive_int("DATABASE_PAGINATION_MAX_PAGE_SIZE", 1000)
+    ttl = positive_int("DATABASE_PAGINATION_CURSOR_TTL_SECONDS", 300)
+    capacity = positive_int("DATABASE_PAGINATION_MAX_ACTIVE_CURSORS", 100)
+    if default_size > max_size:
+        raise ValueError("DATABASE_PAGINATION_DEFAULT_PAGE_SIZE cannot exceed DATABASE_PAGINATION_MAX_PAGE_SIZE")
+    pagination_enabled = enabled in {"true", "1", "yes"}
+    pagination_default_page_size = default_size
+    pagination_max_page_size = max_size
+    cursor_store.invalidate_all()
+    cursor_store = InMemoryCursorStore(ttl_seconds=ttl, max_active_cursors=capacity)
+
+
+def pagination_service(page_size: int | None) -> PaginationService:
+    if not pagination_enabled:
+        raise PublicToolError("INVALID_QUERY_OPTIONS", "Query pagination is disabled.")
+    if page_size is not None:
+        if type(page_size) is not int or page_size <= 0:
+            raise PublicToolError("INVALID_QUERY_OPTIONS", "page_size must be a positive integer.")
+        if page_size > pagination_max_page_size:
+            raise PublicToolError("LIMIT_EXCEEDED", f"page_size exceeds the configured limit of {pagination_max_page_size}.")
+    return PaginationService(
+        QueryExecutionService(get_sql_driver, query_budget_config.max_result_bytes),
+        cursor_store,
+        query_budget_config.max_result_bytes,
+        query_admission,
+    )
+
+
+def pagination_principal() -> str | None:
+    token = get_access_token()
+    return sha256(token.token.encode()).hexdigest() if token is not None else None
+
+
 database_config: DatabaseConfig | None = None  # None until startup parses it: legacy mode
 registry: DatabaseRegistry | None = None  # used only when database_config.auto_discover
 
@@ -531,9 +588,24 @@ async def execute_sql(
 ) -> ResponseType:
     """Executes a SQL query against the database."""
     try:
+        if pagination not in ("none", "offset", "keyset"):
+            raise PublicToolError("INVALID_QUERY_OPTIONS", "Query pagination must be 'none', 'offset', or 'keyset'.")
+        if pagination != "none":
+            service = pagination_service(page_size)
+            limits = resolve_query_limits(replace(query_budget_config, enabled=True), max_rows, timeout_seconds)
+            result = await service.first_page(
+                sql,
+                database,
+                limits.max_rows,
+                limits.timeout_seconds,
+                page_size if page_size is not None else pagination_default_page_size,
+                pagination,
+                pagination_principal(),
+            )
+            return format_text_response(result.to_text())
+        if page_size is not None:
+            raise PublicToolError("INVALID_QUERY_OPTIONS", "Query pagination requires a mode when page_size is provided.")
         limits = resolve_query_limits(query_budget_config, max_rows, timeout_seconds)
-        if page_size is not None or pagination != "none":
-            raise PublicToolError("INVALID_QUERY_OPTIONS", "Query pagination is not available; omit page_size and use pagination='none'.")
         if query_budget_config.enabled:
             service = QueryExecutionService(get_sql_driver, query_budget_config.max_result_bytes)
 
@@ -570,6 +642,18 @@ async def execute_sql(
             return format_text_response(list([r.cells for r in rows]))
     except Exception as e:
         return format_exception_response("execute_sql", e)
+
+
+@mcp.tool(
+    description="Fetch the next page of a query using its cursor; only the page size can change.",
+    annotations=ToolAnnotations(title="Fetch Query Page", readOnlyHint=True),
+)
+async def fetch_query_page(cursor: str, page_size: Annotated[int | None, Field(strict=True)] = None) -> ResponseType:
+    try:
+        result = await pagination_service(page_size).next_page(cursor, page_size, pagination_principal())
+        return format_text_response(result.to_text())
+    except Exception as e:
+        return format_exception_response("fetch_query_page", e)
 
 
 @mcp.tool(
@@ -779,6 +863,7 @@ async def main():
     database_config = parse_database_config(os.environ, args.database_url, args.access_mode)
     try:
         query_budget_config = parse_query_budget_config(os.environ)
+        configure_pagination()
     except ValueError as exc:
         parser.error(str(exc))
     query_admission = QueryAdmission(query_budget_config.max_concurrency)
@@ -870,6 +955,7 @@ async def shutdown(sig=None):
         sys.exit(1)
 
     shutdown_in_progress = True
+    cursor_store.invalidate_all()
 
     if sig:
         logger.info(f"Received exit signal {sig.name}")

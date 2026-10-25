@@ -843,10 +843,10 @@ async def _tools_after_startup(monkeypatch, argv, env):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("argv,env", [([], URI), ([], DISCOVER)], ids=["legacy", "discovery"])
-async def test_contract_nine_legacy_tools_plus_list_databases(monkeypatch, argv, env):
+async def test_contract_nine_legacy_tools_plus_database_list_and_continuation(monkeypatch, argv, env):
     tools = await _tools_after_startup(monkeypatch, argv, env)
-    assert set(tools) == LEGACY_TOOLS | {"list_databases"}
-    assert len(tools) == 10
+    assert set(tools) == LEGACY_TOOLS | {"list_databases", "fetch_query_page"}
+    assert len(tools) == 11
 
 
 @pytest.mark.asyncio
