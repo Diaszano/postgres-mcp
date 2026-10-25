@@ -25,6 +25,25 @@ from ..security.errors import log_public_error
 logger = logging.getLogger(__name__)
 
 
+def query_for_validation(query: str, params: tuple[object, ...] | None) -> str:
+    """Expose bind positions to the AST validator without inserting parameter values."""
+    if params is None:
+        return query
+    position = 0
+
+    def placeholder(match):
+        nonlocal position
+        if match[0] == "%%":
+            return "%"
+        position += 1
+        return f"${position}"
+
+    parsed = re.sub(r"%%|%s", placeholder, query)
+    if position != len(params):
+        raise ValueError("Query parameter count does not match placeholders")
+    return parsed
+
+
 def obfuscate_password(text: str | None) -> str | None:
     """
     Obfuscate password in any text containing connection information.
@@ -260,11 +279,12 @@ class SqlDriver:
         max_result_bytes: int,
         timeout_seconds: int,
         safe_row_yielding: bool = False,
+        params: tuple[object, ...] | None = None,
     ) -> BoundedQueryResult:
         """Execute one validated read query and collect a bounded result."""
         from pglast.parser import parse_sql
 
-        if len(parse_sql(query)) != 1:
+        if len(parse_sql(query_for_validation(query, params))) != 1:
             raise ValueError("Bounded queries must contain exactly one SQL statement")
         if self.conn is None:
             self.connect()
@@ -280,6 +300,7 @@ class SqlDriver:
                     max_result_bytes,
                     timeout_seconds,
                     safe_row_yielding,
+                    params,
                 )
         return await self._execute_bounded_with_connection(
             self.conn,
@@ -288,10 +309,11 @@ class SqlDriver:
             max_result_bytes,
             timeout_seconds,
             safe_row_yielding,
+            params,
         )
 
     async def _execute_bounded_with_connection(
-        self, connection, query, max_rows, max_result_bytes, timeout_seconds, safe_row_yielding
+        self, connection, query, max_rows, max_result_bytes, timeout_seconds, safe_row_yielding, params=None
     ) -> BoundedQueryResult:
         transaction_started = False
         try:
@@ -310,9 +332,9 @@ class SqlDriver:
                     )
                 from .safe_sql import validate_restricted_function_resolution
 
-                await validate_restricted_function_resolution(control_cursor, query)
+                await validate_restricted_function_resolution(control_cursor, query_for_validation(query, params))
                 async with connection.cursor(name=f"bounded_{uuid4().hex}", row_factory=dict_row) as cursor:
-                    await cursor.execute(query)
+                    await cursor.execute(query, params)
                     if cursor.description is None:
                         raise ValueError("Bounded query did not return rows")
                     result = await read_bounded_result(

@@ -980,14 +980,18 @@ class SafeSqlDriver(SqlDriver):
         max_result_bytes: int,
         timeout_seconds: int,
         safe_row_yielding: bool = False,
+        params: tuple[object, ...] | None = None,
     ) -> BoundedQueryResult:
-        self.validate(query)
+        from .sql_driver import query_for_validation
+
+        self.validate(query_for_validation(query, params))
         return await self.sql_driver.execute_bounded_query(
             query,
             max_rows=max_rows,
             max_result_bytes=max_result_bytes,
             timeout_seconds=timeout_seconds,
             safe_row_yielding=safe_row_yielding,
+            params=params,
         )
 
     @staticmethod
