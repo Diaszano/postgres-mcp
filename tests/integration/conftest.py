@@ -1,4 +1,4 @@
-"""Ephemeral PostgreSQL for multi-database integration tests (Docker only, never a user database)."""
+"""Integration test fixtures for multi-database and HypoPG testing."""
 
 import logging
 import os
@@ -17,7 +17,6 @@ from psycopg import sql
 logger = logging.getLogger(__name__)
 
 IMAGE = os.environ.get("MULTIDB_PG_IMAGE", "postgres-hypopg:16")
-FALLBACK_IMAGE = "postgres:16"
 MCP_ROLE = "mcp_test_role"
 VISIBLE_DATABASES = ("app_development", "app_testing", "analytics")
 BLOCKED_DATABASE = "blocked_db"
@@ -49,7 +48,6 @@ class MultiDbPostgres:
 
 def _prepare(pg: MultiDbPostgres) -> None:
     with pg.admin() as conn:
-        # Not a superuser, no CREATEDB; pg_read_all_stats lets it read pg_stat_statements.
         conn.execute(
             sql.SQL("CREATE ROLE {} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD {}").format(
                 sql.Identifier(MCP_ROLE), sql.Literal(pg.mcp_password)
@@ -72,7 +70,6 @@ def _prepare(pg: MultiDbPostgres) -> None:
             conn.execute(sql.SQL("GRANT SELECT ON {} TO {}").format(sql.Identifier(marker), sql.Identifier(MCP_ROLE)))
     with pg.admin(BLOCKED_DATABASE) as conn:
         conn.execute("CREATE TABLE blocked_marker (id int)")
-    # Extensions are per database: only app_development gets pg_stat_statements/hypopg.
     for name in ("app_testing", "analytics"):
         with pg.admin(name) as conn:
             conn.execute("DROP EXTENSION IF EXISTS hypopg")
@@ -85,28 +82,24 @@ def _prepare(pg: MultiDbPostgres) -> None:
 def multidb_postgres() -> Generator[MultiDbPostgres, None, None]:
     """Ephemeral PostgreSQL with four databases and a non-superuser MCP role. Fails (never skips) without Docker."""
     client = docker.from_env()
-    client.ping()  # DockerException here is a real failure, not a skip
-    image = IMAGE
+    client.ping()  # DockerException is a real failure, not a skip
     try:
-        client.images.get(image)
+        client.images.get(IMAGE)
     except docker_errors.ImageNotFound:
-        image = FALLBACK_IMAGE
-        logger.warning("Image %s not found locally; using %s (hypopg unavailable)", IMAGE, image)
-    with _multidb_container(client, image) as pg:
+        msg = f"Required integration container image {IMAGE} was not found. Build it with hypopg before running integration tests."
+        raise RuntimeError(msg) from None
+    with _multidb_container(client, IMAGE) as pg:
+        _prepare(pg)
         yield pg
 
 
 @pytest.fixture(scope="session")
-def hypopg_postgres() -> Generator[MultiDbPostgres, None, None]:
-    """Require the HypoPG image and extension; setup errors never become skips."""
-    client = docker.from_env()
-    client.ping()
-    client.images.get(IMAGE)
-    with _multidb_container(client, IMAGE) as pg:
-        with pg.admin("app_development") as conn:
-            conn.execute("CREATE EXTENSION IF NOT EXISTS hypopg")
-            conn.execute(sql.SQL("GRANT SELECT ON hypopg_list_indexes TO {}").format(sql.Identifier(MCP_ROLE)))
-        yield pg
+def hypopg_postgres(multidb_postgres: MultiDbPostgres) -> Generator[MultiDbPostgres, None, None]:
+    """Require the HypoPG image and extension; missing extension or setup errors are failures, never skips."""
+    with multidb_postgres.admin("app_development") as conn:
+        conn.execute("CREATE EXTENSION IF NOT EXISTS hypopg")
+        conn.execute(sql.SQL("GRANT SELECT ON hypopg_list_indexes TO {}").format(sql.Identifier(MCP_ROLE)))
+    yield multidb_postgres
 
 
 @contextmanager
@@ -116,7 +109,7 @@ def _multidb_container(client: docker.DockerClient, image: str) -> Generator[Mul
         image,
         name=f"postgres-mcp-multidb-{secrets.token_hex(4)}",
         environment={"POSTGRES_PASSWORD": admin_password},
-        ports={"5432/tcp": ("127.0.0.1", 0)},  # random host port
+        ports={"5432/tcp": ("127.0.0.1", 0)},
         command=["-c", "shared_preload_libraries=pg_stat_statements", "-c", "pg_stat_statements.track=all"],
         detach=True,
     )
@@ -137,15 +130,9 @@ def _multidb_container(client: docker.DockerClient, image: str) -> Generator[Mul
             time.sleep(1)
         pg = MultiDbPostgres("127.0.0.1", port, admin_password, secrets.token_urlsafe(24), "")
         with pg.admin() as conn:
-            version = conn.execute("SHOW server_version").fetchone()
-        assert version is not None
-        pg = MultiDbPostgres(pg.host, pg.port, pg.admin_password, pg.mcp_password, version[0])
-        _prepare(pg)
-        logger.info("Ephemeral PostgreSQL %s on 127.0.0.1:%s (image %s)", pg.server_version, pg.port, image)
+            version_res = conn.execute("SHOW server_version").fetchone()
+            object.__setattr__(pg, "server_version", version_res[0] if version_res else "")
         yield pg
     finally:
-        try:
-            container.stop(timeout=1)
-            container.remove(v=True, force=True)
-        except Exception as e:
-            logger.warning("Error removing container: %s", type(e).__name__)
+        container.stop()
+        container.remove(v=True)
