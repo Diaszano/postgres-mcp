@@ -45,6 +45,18 @@ uv run --frozen --group dev pytest -q tests/integration/test_multi_database_inte
 
 The full suite (`uv run --frozen --group dev pytest -q`) therefore also needs Docker; unit tests alone (`tests/unit`) do not.
 
+## Performance Benchmarks
+
+Performance and budget benchmark tests are located in `tests/performance/` and are skipped by default during regular unit test runs.
+
+To run the performance benchmark suite:
+
+```bash
+uv run --group dev pytest -q tests/performance --run-performance
+```
+
+The performance suite benchmarks bounded memory usage during large result encoding, metrics overhead budgets, and concurrency admission fairness.
+
 ## HypoPG session baseline
 
 `tests/integration/test_hypopg_session_baseline.py` uses the separate `hypopg_postgres` fixture.
