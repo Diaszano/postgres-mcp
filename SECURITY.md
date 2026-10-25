@@ -37,3 +37,9 @@ Every security waiver **must** explicitly document:
 3. **Exploitability Analysis**: Detailed technical rationale explaining why the issue is non-exploitable in `postgres-mcp`.
 4. **Reviewer Approval**: Sign-off from a repository owner (see [`.github/CODEOWNERS`](.github/CODEOWNERS)).
 5. **Mandatory Expiration Date**: A strict waiver expiration date (maximum 30 days). Permanent or indefinite waivers are strictly prohibited and will fail automated CI security audits upon expiry.
+
+---
+
+## 4. Repository Governance and Access Security
+
+Detailed repository protection rules, branch security on `main`, release tag protections, and owner governance policies are documented in [`docs/github-settings.md`](docs/github-settings.md).
