@@ -1,0 +1,21 @@
+name: Release
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  release-stub:
+    name: Release Gate Stub
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Confirm delivery prerequisites
+        run: |
+          echo "Delivery handoff reached. Full semantic release pipeline activated in Plan 04 and Plan 05."
