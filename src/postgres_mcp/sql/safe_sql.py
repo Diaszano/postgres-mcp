@@ -1033,6 +1033,15 @@ def validate_restricted_sql(sql: str) -> None:
         raise SQLValidationError("Error validating query: statement is not allowed") from exc
 
 
+def validate_single_select(sql: str) -> SelectStmt:
+    """Apply the restricted policy and require exactly one SELECT statement."""
+    validate_restricted_sql(sql)
+    statements = pglast.parse_sql(sql)
+    if len(statements) != 1 or not isinstance(statements[0].stmt, SelectStmt):
+        raise SQLValidationError("Exactly one SELECT statement is required")
+    return statements[0].stmt
+
+
 async def validate_restricted_function_resolution(cursor: Any, query: str) -> None:
     """Reject untrusted function/operator overloads and non-catalog type casts."""
     try:
