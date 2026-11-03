@@ -13,6 +13,7 @@ from postgres_mcp.artifacts import ErrorResult
 from postgres_mcp.explain.explain_plan import ExplainPlanTool
 from postgres_mcp.sql import TableAliasVisitor
 
+from ..security.errors import log_public_error
 from ..sql import IndexDefinition
 from ..sql import SqlDriver
 from .index_opt_base import IndexRecommendation
@@ -80,7 +81,7 @@ class LLMOptimizerTool(IndexTuningBase):
 
         query = query_weights[0][0]
         parsed_query = query_weights[0][1]
-        logger.info("Generating index recommendations for query: %s", query)
+        logger.info("Generating index recommendations for one query")
 
         # Extract tables from the parsed query
         table_visitor = TableAliasVisitor()
@@ -104,7 +105,6 @@ class LLMOptimizerTool(IndexTuningBase):
 
         # Get the explain plan JSON
         explain_plan_json = explain_result.value
-        logger.debug("Generated explain plan: %s", explain_plan_json)
 
         # Extract indexes used in the explain plan
         indexes_used: set[Index] = await self._extract_indexes_from_explain_plan_with_columns(explain_plan_json)
@@ -222,7 +222,7 @@ class LLMOptimizerTool(IndexTuningBase):
                         found_improvement = True
                 except Exception as e:
                     # We discard the alternative. We are seeing this happen due to invalid index definitions.
-                    logger.error("Error evaluating alternative %d/%d: %s", i + 1, len(index_alternatives), str(e))
+                    log_public_error(logger, "evaluate_index_alternative", e)
 
             # Keep only the 5 best results in the attempt history
             attempt_history.sort(key=lambda x: x.objective_score)
@@ -286,7 +286,7 @@ class LLMOptimizerTool(IndexTuningBase):
                     logger.warning(f"Failed to estimate size for index {index_config.name}")
 
             except Exception as e:
-                logger.error(f"Error estimating size for index {index_config.name}: {e!s}")
+                log_public_error(logger, "estimate_index_size", e)
 
         return total_size
 
@@ -380,5 +380,5 @@ class LLMOptimizerTool(IndexTuningBase):
                 return tuple()
 
         except Exception as e:
-            logger.error(f"Error getting columns for index {index_name}: {e!s}")
+            log_public_error(logger, "get_index_columns", e)
             return tuple()

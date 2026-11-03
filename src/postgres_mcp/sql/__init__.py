@@ -3,6 +3,10 @@
 from .bind_params import ColumnCollector
 from .bind_params import SqlBindParams
 from .bind_params import TableAliasVisitor
+from .database_registry import DatabaseInfo
+from .database_registry import DatabaseRegistry
+from .database_registry import DatabaseUnavailableError
+from .database_registry import PoolCapacityError
 from .extension_utils import check_extension
 from .extension_utils import check_hypopg_installation_status
 from .extension_utils import check_postgres_version_requirement
@@ -16,8 +20,12 @@ from .sql_driver import obfuscate_password
 
 __all__ = [
     "ColumnCollector",
+    "DatabaseInfo",
+    "DatabaseRegistry",
+    "DatabaseUnavailableError",
     "DbConnPool",
     "IndexDefinition",
+    "PoolCapacityError",
     "SafeSqlDriver",
     "SqlBindParams",
     "SqlDriver",

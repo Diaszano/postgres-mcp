@@ -300,7 +300,8 @@ async def test_explain_with_error(mock_sql_driver):
 
     # Verify error handling
     assert isinstance(result, ErrorResult)
-    assert "Database error" in result.value
+    assert result.value == "The operation failed."
+    assert "Database error" not in result.value
 
 
 @pytest.mark.asyncio
@@ -469,9 +470,10 @@ async def test_explain_with_functional_hypothetical_indexes(mock_sql_driver):
     assert len(explain_calls) == 1
     explain_call = explain_calls[0]
 
-    # Verify the hypothetical indexes are created correctly with the expressions
-    assert "SELECT hypopg_reset();" in explain_call
-    assert "hypopg_create_index" in explain_call
-    assert "LOWER(primary_title)" in explain_call
-    assert "LOWER(original_title)" in explain_call
-    assert "start_year DESC" in explain_call
+    assert calls[0] == calls[-1] == "SELECT hypopg_reset();"
+    create_calls = [call for call in calls if "hypopg_create_index" in call]
+    assert len(create_calls) == 3
+    assert "hypopg_" not in explain_call
+    assert any("LOWER(primary_title)" in call for call in create_calls)
+    assert any("LOWER(original_title)" in call for call in create_calls)
+    assert any("start_year DESC" in call for call in create_calls)

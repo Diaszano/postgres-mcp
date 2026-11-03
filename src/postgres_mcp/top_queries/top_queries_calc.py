@@ -2,9 +2,10 @@ import logging
 from dataclasses import dataclass
 from typing import Literal
 from typing import LiteralString
-from typing import Union
 from typing import cast
 
+from ..security.errors import log_public_error
+from ..security.errors import to_public_error
 from ..sql import SafeSqlDriver
 from ..sql import SqlDriver
 from ..sql.extension_utils import check_extension
@@ -82,7 +83,7 @@ def _get_pg_stat_statements_columns(pg_version: int) -> PgStatStatementsColumns:
 class TopQueriesCalc:
     """Tool for retrieving the slowest SQL queries."""
 
-    def __init__(self, sql_driver: Union[SqlDriver, SafeSqlDriver]):
+    def __init__(self, sql_driver: SqlDriver | SafeSqlDriver):
         self.sql_driver = sql_driver
 
     async def get_top_queries_by_time(self, limit: int = 10, sort_by: Literal["total", "mean"] = "mean") -> str:
@@ -127,11 +128,11 @@ class TopQueriesCalc:
                     {cols.mean_time},
                     rows
                 FROM pg_stat_statements
+                WHERE dbid = (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database())
                 ORDER BY {order_by_column} DESC
                 LIMIT {{}};
             """,
             )
-            logger.debug(f"Executing query: {query}")
             slow_query_rows = await SafeSqlDriver.execute_param_query(
                 self.sql_driver,
                 query,
@@ -150,8 +151,8 @@ class TopQueriesCalc:
             result += str(slow_queries)
             return result
         except Exception as e:
-            logger.error(f"Error getting slow queries: {e}", exc_info=True)
-            return f"Error getting slow queries: {e}"
+            log_public_error(logger, "get_top_queries_by_time", e)
+            return to_public_error(e).message
 
     async def get_top_resource_queries(self, frac_threshold: float = 0.05) -> str:
         """Reports the most time consuming queries based on a resource blend.
@@ -207,6 +208,7 @@ class TopQueriesCalc:
                             AS shared_blks_dirtied_frac,
                         {cols.wal_bytes_frac}
                     FROM pg_stat_statements
+                    WHERE dbid = (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database())
                 )
                 SELECT
                     query,
@@ -235,7 +237,6 @@ class TopQueriesCalc:
             """,
             )
 
-            logger.debug(f"Executing query: {query}")
             slow_query_rows = await SafeSqlDriver.execute_param_query(
                 self.sql_driver,
                 query,
@@ -245,5 +246,5 @@ class TopQueriesCalc:
 
             return str(resource_queries)
         except Exception as e:
-            logger.error(f"Error getting resource-intensive queries: {e}", exc_info=True)
-            return f"Error resource-intensive queries: {e}"
+            log_public_error(logger, "get_top_resource_queries", e)
+            return to_public_error(e).message

@@ -1,0 +1,18 @@
+* text=auto eol=lf
+
+*.py text diff=python
+*.sh text eol=lf
+*.md text
+*.yml text
+*.yaml text
+*.json text
+*.toml text
+*.sql text
+justfile text
+Dockerfile text
+
+*.tar.gz binary
+*.whl binary
+*.png binary
+*.jpg binary
+*.so binary

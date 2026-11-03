@@ -9,6 +9,8 @@ from typing import Any
 
 from ..artifacts import ErrorResult
 from ..artifacts import ExplainPlanArtifact
+from ..security.errors import log_public_error
+from ..security.errors import to_public_error
 from ..sql import IndexDefinition
 from ..sql import SafeSqlDriver
 from ..sql import SqlBindParams
@@ -47,8 +49,6 @@ class ExplainPlanTool:
                     logger.debug("LIKE expressions detected, using parameter replacement instead of GENERIC_PLAN")
                 bind_params = SqlBindParams(self.sql_driver)
                 modified_query = await bind_params.replace_parameters(sql_query)
-                logger.debug(f"Original query: {sql_query}")
-                logger.debug(f"Modified query: {modified_query}")
                 sql_query = modified_query
             else:
                 use_generic_plan = True
@@ -109,8 +109,8 @@ class ExplainPlanTool:
                     # Try to convert to list if it's not already
                     try:
                         idx["columns"] = list(idx["columns"]) if hasattr(idx["columns"], "__iter__") else [idx["columns"]]
-                    except Exception as e:
-                        return ErrorResult(f"Expected list for 'columns', got {type(idx['columns'])}: {e}")
+                    except Exception:
+                        return ErrorResult(f"Expected list for 'columns', got {type(idx['columns'])}")
 
             # Convert the index definitions to IndexConfig objects
             indexes = frozenset(
@@ -136,11 +136,12 @@ class ExplainPlanTool:
                 # Convert the plan data to an ExplainPlanArtifact
                 return ExplainPlanArtifact.from_json_data(plan_data)
             except Exception as e:
-                return ErrorResult(f"Error converting explain plan: {e}")
+                log_public_error(logger, "convert_explain_plan", e)
+                return ErrorResult(to_public_error(e).message)
 
         except Exception as e:
-            logger.error(f"Error in explain_with_hypothetical_indexes: {e}", exc_info=True)
-            return ErrorResult(f"Error generating explain plan with hypothetical indexes: {e}")
+            log_public_error(logger, "explain_with_hypothetical_indexes", e)
+            return ErrorResult(to_public_error(e).message)
 
     def _has_bind_variables(self, query: str) -> bool:
         """Check if a query contains bind variables ($1, $2, etc)."""
@@ -159,7 +160,6 @@ class ExplainPlanTool:
                 explain_options.append("GENERIC_PLAN")
 
             explain_q = f"EXPLAIN ({', '.join(explain_options)}) {query}"
-            logger.debug(f"RUNNING EXPLAIN QUERY: {explain_q}")
             rows = await self.sql_driver.execute_query(explain_q)  # type: ignore
             if rows is None:
                 return ErrorResult("No results returned from EXPLAIN")
@@ -178,9 +178,11 @@ class ExplainPlanTool:
             try:
                 return ExplainPlanArtifact.from_json_data(plan_dict)
             except Exception as e:
-                return ErrorResult(f"Internal error converting explain plan - do not retry: {e}")
+                log_public_error(logger, "convert_explain_result", e)
+                return ErrorResult(to_public_error(e).message)
         except Exception as e:
-            return ErrorResult(f"Error executing explain plan: {e}")
+            log_public_error(logger, "execute_explain_plan", e)
+            return ErrorResult(to_public_error(e).message)
 
     async def generate_explain_plan_with_hypothetical_indexes(
         self,
@@ -200,13 +202,14 @@ class ExplainPlanTool:
         Returns:
             The explain plan as a dictionary
         """
+        failed = False
         try:
-            # Create the indexes query
-            create_indexes_query = "SELECT hypopg_reset();"
-            if len(indexes) > 0:
-                create_indexes_query += SafeSqlDriver.param_sql_to_query(
-                    "SELECT hypopg_create_index({});" * len(indexes),
-                    [idx.definition for idx in indexes],
+            await self.sql_driver.execute_query("SELECT hypopg_reset();")
+            for index in indexes:
+                await SafeSqlDriver.execute_param_query(
+                    self.sql_driver,
+                    "SELECT hypopg_create_index({});",
+                    [index.definition],
                 )
 
             # Execute explain with the indexes
@@ -216,7 +219,7 @@ class ExplainPlanTool:
             if indexes:
                 explain_options.append("COSTS TRUE")
 
-            explain_plan_query = f"{create_indexes_query}EXPLAIN ({', '.join(explain_options)}) {query_text}"
+            explain_plan_query = f"EXPLAIN ({', '.join(explain_options)}) {query_text}"
             plan_result = await self.sql_driver.execute_query(explain_plan_query)  # type: ignore
 
             # Extract the plan
@@ -233,9 +236,22 @@ class ExplainPlanTool:
             # Return empty plan if no result
             return {"Plan": {"Total Cost": float("inf")}}
 
-        except Exception as e:
-            logger.error(
-                f"Error getting explain plan for query: {query_text} with error: {e}",
-                exc_info=True,
-            )
-            raise e
+        except BaseException as e:
+            failed = True
+            if isinstance(e, Exception):
+                log_public_error(logger, "generate_explain_plan_with_indexes", e)
+            raise
+        finally:
+            try:
+                await self.sql_driver.execute_query("SELECT hypopg_reset();")
+            except BaseException as reset_error:
+                log_public_error(logger, "reset_hypothetical_indexes", reset_error)
+                driver = self.sql_driver.sql_driver if isinstance(self.sql_driver, SafeSqlDriver) else self.sql_driver
+                if not driver.owns_transaction and driver.conn is not None:
+                    # Rollback cannot clear HypoPG session state after a failed reset.
+                    try:
+                        await driver.conn.close()
+                    except Exception as close_error:
+                        log_public_error(logger, "close_hypothetical_index_session", close_error)
+                if not failed:
+                    raise

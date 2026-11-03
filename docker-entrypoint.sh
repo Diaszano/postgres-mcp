@@ -1,99 +1,81 @@
 #!/bin/bash
+set -e
 
-# Don't exit immediately so we can debug issues
-# set -e
+remap=${DATABASE_DOCKER_REMAP_LOCALHOST:-false}
+case "$remap" in
+    true|false) ;;
+    *) echo "Invalid DATABASE_DOCKER_REMAP_LOCALHOST value; expected true or false." >&2; exit 2 ;;
+esac
 
-# Function to replace localhost in a string with the Docker host
-replace_localhost() {
-    local input_str="$1"
-    local docker_host=""
-
-    # Try to determine Docker host address
+docker_host=""
+if [[ "$remap" == true ]]; then
     if ping -c 1 -w 1 host.docker.internal >/dev/null 2>&1; then
-        docker_host="host.docker.internal"
-        echo "Docker Desktop detected: Using host.docker.internal for localhost" >&2
+        docker_host=host.docker.internal
     elif ping -c 1 -w 1 172.17.0.1 >/dev/null 2>&1; then
-        docker_host="172.17.0.1"
-        echo "Docker on Linux detected: Using 172.17.0.1 for localhost" >&2
+        docker_host=172.17.0.1
     else
-        echo "WARNING: Cannot determine Docker host IP. Using original address." >&2
-        return 1
-    fi
-
-    # Replace localhost with Docker host
-    if [[ -n "$docker_host" ]]; then
-        local new_str="${input_str/localhost/$docker_host}"
-        echo "  Remapping: $input_str --> $new_str" >&2
-        echo "$new_str"
-        return 0
-    fi
-
-    # No replacement made
-    echo "$input_str"
-    return 1
-}
-
-# Create a new array for the processed arguments
-processed_args=()
-processed_args+=("$1")
-shift 1
-
-# Process remaining command-line arguments for postgres:// or postgresql:// URLs that contain localhost
-for arg in "$@"; do
-    if [[ "$arg" == *"postgres"*"://"*"localhost"* ]]; then
-        echo "Found localhost in database connection: $arg" >&2
-        new_arg=$(replace_localhost "$arg")
-        if [[ $? -eq 0 ]]; then
-            processed_args+=("$new_arg")
-        else
-            processed_args+=("$arg")
-        fi
-    else
-        processed_args+=("$arg")
-    fi
-done
-
-# Check and replace localhost in DATABASE_URI if it exists
-if [[ -n "$DATABASE_URI" && "$DATABASE_URI" == *"postgres"*"://"*"localhost"* ]]; then
-    echo "Found localhost in DATABASE_URI: $DATABASE_URI" >&2
-    new_uri=$(replace_localhost "$DATABASE_URI")
-    if [[ $? -eq 0 ]]; then
-        export DATABASE_URI="$new_uri"
+        echo "Cannot determine Docker host; database host was left unchanged." >&2
     fi
 fi
 
-# Check if SSE transport is specified and --sse-host is not already set
+remap_uri() {
+    remapped_uri=$1
+    [[ -n "$docker_host" ]] || return 0
+    local replacement
+    replacement=$(python - "$1" "$docker_host" <<'PY'
+import sys
+from urllib.parse import urlsplit
+
+uri, docker_host = sys.argv[1:]
+try:
+    parsed = urlsplit(uri)
+    netloc = parsed.netloc
+    host_port = netloc.rsplit("@", 1)[-1]
+    host = host_port.partition(":")[0]
+    if parsed.scheme not in ("postgres", "postgresql") or host.lower() != "localhost":
+        raise SystemExit
+except ValueError:
+    raise SystemExit
+
+scheme_end = uri.find("://") + 3
+authority_end = min((i for i in (uri.find("/", scheme_end), uri.find("?", scheme_end), uri.find("#", scheme_end)) if i >= 0), default=len(uri))
+authority = uri[scheme_end:authority_end]
+userinfo_length = authority.rfind("@") + 1
+host_start = scheme_end + userinfo_length
+# The sentinel preserves trailing newlines through Bash command substitution.
+sys.stdout.write(uri[:host_start] + docker_host + uri[host_start + len(host):] + ".")
+PY
+    )
+    if [[ -n "$replacement" ]]; then
+        remapped_uri=${replacement%.}
+    fi
+}
+
+processed_args=("$1")
+shift
+for arg in "$@"; do
+    remap_uri "$arg"
+    processed_args+=("$remapped_uri")
+done
+
+if [[ -n "${DATABASE_URI:-}" ]]; then
+    remap_uri "$DATABASE_URI"
+    DATABASE_URI=$remapped_uri
+    export DATABASE_URI
+fi
+
 has_sse=false
 has_sse_host=false
-
-for arg in "${processed_args[@]}"; do
-    if [[ "$arg" == "--transport" ]]; then
-        # Check next argument for "sse"
-        for next_arg in "${processed_args[@]}"; do
-            if [[ "$next_arg" == "sse" ]]; then
-                has_sse=true
-                break
-            fi
-        done
-    elif [[ "$arg" == "--transport=sse" ]]; then
+for i in "${!processed_args[@]}"; do
+    arg=${processed_args[$i]}
+    if [[ "$arg" == "--transport=sse" || ( "$arg" == "--transport" && "${processed_args[$((i + 1))]:-}" == "sse" ) ]]; then
         has_sse=true
-    elif [[ "$arg" == "--sse-host"* ]]; then
+    elif [[ "$arg" == --sse-host* ]]; then
         has_sse_host=true
     fi
 done
-
-# Add --sse-host if needed
-if [[ "$has_sse" == true ]] && [[ "$has_sse_host" == false ]]; then
-    echo "SSE transport detected, adding --sse-host=0.0.0.0" >&2
+if [[ "$has_sse" == true && "$has_sse_host" == false ]]; then
     processed_args+=("--sse-host=0.0.0.0")
 fi
 
-echo "----------------" >&2
-echo "Executing command:" >&2
-echo "${processed_args[@]}" >&2
-echo "----------------" >&2
-
-# Execute the command with the processed arguments
-# Use exec to replace the shell with the Python process, making it PID 1
-# This ensures signals (SIGTERM, SIGINT) are properly received
 exec "${processed_args[@]}"
