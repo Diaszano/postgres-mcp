@@ -19,7 +19,7 @@ This is a proposed configuration; it has not been applied. Remote observations b
 - Keep auto-merge enabled; GitHub should merge only after the applicable required checks pass.
 - Keep `.github/CODEOWNERS` as an ownership and reviewer-routing record. Do not require approval while there is one maintainer. Revisit an approval requirement only after another independent maintainer has write access.
 - Require conversation resolution and up-to-date branches for merging. Block force pushes and deletion of `main`.
-- Require the CI job contexts listed above only after confirming their exact check names from a successful run. Both PostgreSQL 16 and 17 integrations are required; PostgreSQL 18 remains experimental.
+- Require the CI job contexts listed above only after confirming their exact check names from a successful run. Both PostgreSQL 16 and 17 integrations are required; PostgreSQL 18 remains experimental. **Do not enforce this check set yet:** `Static Type Analysis` currently fails with 292 Pyright errors, and the release handoff depends on that job. Resolve the type errors before enabling this ruleset so it does not permanently block merges and delivery.
 
 ### Release bot and ruleset compatibility
 

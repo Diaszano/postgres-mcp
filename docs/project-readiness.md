@@ -88,3 +88,29 @@ Baseline captured on 2026-11-03 from local commit `cdb81019c61a2cb1f1590e4b42af7
 - GitHub ruleset documentation lists GitHub Apps among eligible bypass actors. Repository-specific availability of the built-in GitHub Actions app was not verified, so the PR ruleset is explicitly held in Evaluate until that exact bypass is verified or the release flow changes. No commit-message bypass or new credential is proposed.
 - Governance docs now account for the sole observed admin, distinguish CODEOWNERS routing from enforced independent approval, and mark GHCR package access/publication as unverified. Release rollback digests are explicitly labeled placeholders. `SECURITY.md`, the PR template, CI/CD guide, release checklist, and plans index were reconciled to the changes in Tasks 2–6.
 - Required Task 7 command: `uv run pytest -q tests/release/test_github_settings.py tests/release/test_release_docs.py tests/release/test_repository_governance.py tests/release/test_repository_conventions.py tests/unit/test_documentation_contract.py` — 26 passed.
+
+## Task 8 final verification
+
+Implementation verification was run from committed code at `b6ba76eca4251a19f1dae27bafdd675787cd064f` on 2026-11-03. This evidence is local unless marked remote.
+
+| Check | Command or evidence | Result |
+|---|---|---|
+| Dependency lock | `uv lock --check` | Passed; 83 packages resolved. |
+| Ruff | `uv run ruff check .`; `uv run ruff format --check .` | Passed; all checks passed, 147 files formatted. |
+| Static analysis | `uv run pyright --outputjson` | Failed with 292 errors, 0 warnings, across 147 analyzed files. This is the known gap recorded in Task 2. |
+| Unit and release suites | `uv run pytest -q tests/unit tests/release` | 833 passed, 1 xfailed. |
+| Package build | `uv build` | Passed; built sdist and wheel for 0.3.0. |
+| PostgreSQL 16 integration | `bash scripts/ci/build_hypopg_image.sh 16`; `MULTIDB_PG_IMAGE=postgres-hypopg:16 uv run pytest -q tests/integration` | Image and HypoPG activation passed; 86 passed, 18 skipped, 1 xfailed. |
+| PostgreSQL 17 integration | `bash scripts/ci/build_hypopg_image.sh 17`; `MULTIDB_PG_IMAGE=postgres-hypopg:17 uv run pytest -q -rs tests/integration` | Image and HypoPG activation passed; 86 passed, 18 skipped, 1 xfailed. All skips were DTA cases with no generated recommendations or explicitly deferred scenarios. |
+| Wheel smoke | Install built wheel into a clean Python 3.12 venv; run `postgres-mcp --help`; inspect module path and package metadata | Passed; version 0.3.0, module loaded from the temporary venv's `site-packages`. |
+| Container smoke | `docker build --tag postgres-mcp:readiness-final --build-arg REVISION=readiness-final --build-arg VERSION=0.3.0 .`; `docker run --rm postgres-mcp:readiness-final --help`; inspect OCI version label | Passed; help returned successfully and label is 0.3.0. No image was pushed. |
+| Diff hygiene | `git diff --check` | Passed. |
+
+
+The independent final review confirmed a readiness blocker: `.github/workflows/ci.yml` requires the `typecheck` job before the release handoff, and Pyright currently exits with 292 errors. Keep this CI gate intact; do not enforce the proposed branch check set or treat delivery as ready until the Pyright diagnostics are resolved and the gate passes.
+
+### Remote status and pending work
+
+- **Validated on GitHub:** Repository metadata, branch protection/rulesets, collaborator permission, check runs, releases, and recent Actions runs were inspected on 2026-11-03. `main` is unprotected; the only observed collaborator has admin access. The latest CI run failed before creating jobs, so successful CI check-context names remain unconfirmed. The [latest `main` CI run](https://github.com/Diaszano/postgres-mcp/actions/runs/41660883533) is recorded above. GitHub releases API returned an empty list.
+- **Pending access/remote verification:** GHCR package existence, visibility, Actions write permission, manifests, digests, and attestations; private vulnerability reporting availability; whether the built-in GitHub Actions app can be selected as a ruleset bypass actor; and exact status-check display names from a successful run.
+- **Not applied:** No branch/tag rules, merge settings, GHCR settings, release, image promotion, or publication were changed. The settings guide is a proposal for owner review. Do not declare end-to-end CD validated until the release and registry path has succeeded remotely.

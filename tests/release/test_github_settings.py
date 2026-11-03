@@ -28,6 +28,8 @@ def test_proposal_uses_workflow_context_names_and_both_required_postgres_version
         assert job in content
     assert "exact displayed contexts" in content
     assert "experimental `Integration (PG 18)`" in content
+    assert "do not enforce this check set yet" in content.lower()
+    assert "release handoff depends on that job" in content
 
 
 def test_release_bot_guidance_does_not_claim_commit_message_bypass() -> None:
