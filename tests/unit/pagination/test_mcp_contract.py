@@ -1,3 +1,5 @@
+# pyright: reportPrivateUsage=false
+
 import inspect
 import json
 import sys
@@ -18,6 +20,7 @@ from postgres_mcp.query_limits.config import QueryBudgetConfig
 from postgres_mcp.query_limits.results import BoundedQueryResult
 from postgres_mcp.security.errors import to_public_error
 from postgres_mcp.sql import SqlDriver
+from tests.type_helpers import text_at
 
 
 @pytest.fixture
@@ -63,7 +66,7 @@ async def test_legacy_call_is_not_paginated(monkeypatch, paging):
     driver, errors = paging
     monkeypatch.setattr(server, "query_budget_config", QueryBudgetConfig())
     response = await server.execute_sql("SELECT id FROM users", "app")
-    assert response[0].text == "[{'id': 1}]"
+    assert text_at(response) == "[{'id': 1}]"
     driver.execute_query.assert_awaited_once_with("SELECT id FROM users")
     driver.execute_bounded_query.assert_not_called()
     assert not errors
@@ -85,6 +88,7 @@ async def test_page_size_without_mode_is_invalid(paging):
 
 def test_fetch_page_accepts_only_cursor_and_page_size():
     tool = next(tool for tool in server.mcp._tool_manager.list_tools() if tool.name == "fetch_query_page")
+    assert tool.annotations is not None
     assert set(tool.parameters["properties"]) == {"cursor", "page_size"}
     assert tool.parameters["required"] == ["cursor"]
     assert tool.parameters["properties"]["page_size"]["default"] is None
@@ -132,7 +136,7 @@ async def test_paging_disabled_rejected(monkeypatch, paging):
 async def test_success_metadata_and_text(monkeypatch, paging, guardrails_enabled):
     monkeypatch.setattr(server, "query_budget_config", QueryBudgetConfig(enabled=guardrails_enabled))
     response = await server.execute_sql("SELECT id FROM users ORDER BY id", "app", max_rows=250, page_size=100, pagination="offset")
-    payload = json.loads(response[0].text)
+    payload = json.loads(text_at(response))
     assert response[0].type == "text"
     assert payload["rows"] == [{"id": i} for i in range(1, 101)]
     assert {
@@ -147,10 +151,10 @@ async def test_success_metadata_and_text(monkeypatch, paging, guardrails_enabled
         "expires_in_seconds": 300,
     }
     assert payload["next_cursor"]
-    second = json.loads((await server.fetch_query_page(payload["next_cursor"], 100))[0].text)
+    second = json.loads(text_at(await server.fetch_query_page(payload["next_cursor"], 100)))
     assert second["total_returned_rows"] == 200
     assert second["next_cursor"] != payload["next_cursor"]
-    final = json.loads((await server.fetch_query_page(second["next_cursor"]))[0].text)
+    final = json.loads(text_at(await server.fetch_query_page(second["next_cursor"])))
     assert final["total_returned_rows"] == 250
     assert final["returned_rows"] == 50
     assert final["has_more"] is False
@@ -180,7 +184,7 @@ async def test_continuation_principal_and_page_cap(paging):
     alice = AuthenticatedUser(AccessToken(token="secret", client_id="configured-http-client", scopes=[]))
     context = auth_context_var.set(alice)
     try:
-        first = json.loads((await server.execute_sql("SELECT id FROM users ORDER BY id", pagination="offset"))[0].text)
+        first = json.loads(text_at(await server.execute_sql("SELECT id FROM users ORDER BY id", pagination="offset")))
         await server.fetch_query_page(first["next_cursor"], 1001)
         assert errors[-1] == "LIMIT_EXCEEDED"
         auth_context_var.set(AuthenticatedUser(AccessToken(token="other-secret", client_id="configured-http-client", scopes=[])))
@@ -190,7 +194,7 @@ async def test_continuation_principal_and_page_cap(paging):
         await server.fetch_query_page(first["next_cursor"])
         assert errors[-1] == "CURSOR_INVALID"
         auth_context_var.set(alice)
-        assert json.loads((await server.fetch_query_page(first["next_cursor"]))[0].text)["total_returned_rows"] == 200
+        assert json.loads(text_at(await server.fetch_query_page(first["next_cursor"])))["total_returned_rows"] == 200
     finally:
         auth_context_var.reset(context)
 
@@ -227,16 +231,16 @@ async def test_configured_defaults_caps_expiry_and_capacity(monkeypatch, paging)
         },
     )
     sql = "SELECT id FROM users ORDER BY id"
-    first = json.loads((await server.execute_sql(sql, pagination="offset"))[0].text)
+    first = json.loads(text_at(await server.execute_sql(sql, pagination="offset")))
     assert first["page_size"] == 2
     assert first["expires_in_seconds"] == 17
-    second = json.loads((await server.execute_sql(sql, pagination="offset"))[0].text)
+    second = json.loads(text_at(await server.execute_sql(sql, pagination="offset")))
     await server.fetch_query_page(first["next_cursor"])
     assert errors[-1] == "CURSOR_INVALID"
     await server.fetch_query_page(second["next_cursor"], 4)
     assert errors[-1] == "LIMIT_EXCEEDED"
-    assert json.loads((await server.fetch_query_page(second["next_cursor"], 3))[0].text)["returned_rows"] == 3
-    expiring = json.loads((await server.execute_sql(sql, pagination="offset"))[0].text)
+    assert json.loads(text_at(await server.fetch_query_page(second["next_cursor"], 3)))["returned_rows"] == 3
+    expiring = json.loads(text_at(await server.execute_sql(sql, pagination="offset")))
     monkeypatch.setattr(server.cursor_store, "_clock", lambda: time.monotonic() + 18)
     await server.fetch_query_page(expiring["next_cursor"])
     assert errors[-1] == "CURSOR_EXPIRED"

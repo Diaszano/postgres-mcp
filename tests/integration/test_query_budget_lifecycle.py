@@ -1,3 +1,4 @@
+
 import asyncio
 import tracemalloc
 from functools import partial
@@ -21,6 +22,7 @@ from postgres_mcp.sql import SqlDriver
 from postgres_mcp.sql.database_catalog import DatabaseCatalog
 from postgres_mcp.sql.database_registry import DatabaseRegistry
 from postgres_mcp.sql.database_registry import DatabaseUnavailableError
+from tests.type_helpers import text_at
 
 
 @pytest_asyncio.fixture
@@ -118,8 +120,8 @@ async def test_connection_failure_is_sanitized(multidb_postgres, monkeypatch):
         public = to_public_error(error.value)
         assert public.code == "DATABASE_UNAVAILABLE"
         response = await server.execute_sql("SELECT 1")
-        assert response[0].text == "Error: The database is temporarily unavailable."
-        assert all(value not in public.message + response[0].text for value in (secret, "private_password", multidb_postgres.mcp_role))
+        assert text_at(response) == "Error: The database is temporarily unavailable."
+        assert all(value not in public.message + text_at(response) for value in (secret, "private_password", multidb_postgres.mcp_role))
         assert registry.active_leases("app_development") == 0
     finally:
         await registry.close_all()
@@ -143,15 +145,15 @@ async def test_guarded_read_timeout_releases_pool_and_semaphore(lifecycle):
 async def test_guardrails_off_preserves_legacy_dml(lifecycle, monkeypatch):
     registry, pool, admission, service = lifecycle
     monkeypatch.setattr(server, "query_budget_config", QueryBudgetConfig(enabled=False))
-    assert (await server.execute_sql("CREATE TEMP TABLE lifecycle_marker (id integer)"))[0].text == "No results"
-    assert (await server.execute_sql("INSERT INTO lifecycle_marker VALUES (1)"))[0].text == "No results"
-    assert (await server.execute_sql("SELECT id FROM lifecycle_marker"))[0].text == "[{'id': 1}]"
+    assert text_at(await server.execute_sql("CREATE TEMP TABLE lifecycle_marker (id integer)")) == "No results"
+    assert text_at(await server.execute_sql("INSERT INTO lifecycle_marker VALUES (1)")) == "No results"
+    assert text_at(await server.execute_sql("SELECT id FROM lifecycle_marker")) == "[{'id': 1}]"
     with pytest.raises(PublicToolError) as error:
         await service.execute("INSERT INTO lifecycle_marker VALUES (2)", None, QueryLimits(200, 15))
     assert error.value.code == "SQL_VALIDATION_FAILED"
     with pytest.raises(psycopg.errors.DivisionByZero):
         await SqlDriver(pool).execute_query("BEGIN; INSERT INTO lifecycle_marker VALUES (2); SELECT 1 / 0")
-    assert (await server.execute_sql("SELECT id FROM lifecycle_marker"))[0].text == "[{'id': 1}]"
+    assert text_at(await server.execute_sql("SELECT id FROM lifecycle_marker")) == "[{'id': 1}]"
     assert registry.active_leases("app_development") == 0
 
 

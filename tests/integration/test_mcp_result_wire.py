@@ -1,3 +1,5 @@
+# pyright: reportPrivateUsage=false
+
 import json
 from pathlib import Path
 
@@ -13,6 +15,7 @@ from postgres_mcp.mcp_response import success_result
 from postgres_mcp.security.errors import PublicToolError
 from postgres_mcp.sql.database_catalog import DatabaseCatalog
 from postgres_mcp.sql.database_registry import DatabaseRegistry
+from tests.type_helpers import text_at
 
 
 @pytest.mark.asyncio
@@ -34,7 +37,7 @@ async def test_tool_error_is_error_on_wire():
         assert res.structuredContent["error"]["retryable"] is True
         assert res.structuredContent["error"]["request_id"] == "trace-abc"
         assert len(res.content) >= 1
-        assert "The database connection pool is at capacity." in res.content[0].text
+        assert "The database connection pool is at capacity." in text_at(res.content)
 
 
 @pytest.mark.asyncio
@@ -50,7 +53,7 @@ async def test_structured_success_has_text_fallback():
         assert res.isError is False
         assert res.structuredContent == {"database": "app_db", "total": 42}
         assert len(res.content) == 1
-        text_payload = json.loads(res.content[0].text)
+        text_payload = json.loads(text_at(res.content))
         assert text_payload == {"database": "app_db", "total": 42}
 
 
@@ -68,8 +71,9 @@ async def test_unexpected_exception_is_sanitized():
     async with create_connected_server_and_client_session(server._mcp_server) as client:
         res = await client.call_tool("sample_throw", {})
         assert res.isError is True
+        assert res.structuredContent is not None
         assert res.structuredContent["error"]["code"] == "INTERNAL_ERROR"
-        assert "supersecret" not in res.content[0].text
+        assert "supersecret" not in text_at(res.content)
         assert "supersecret" not in str(res.structuredContent)
 
 
@@ -100,13 +104,13 @@ async def test_restricted_database_tools_work_over_mcp_wire(multidb_postgres, mo
 
             databases = await client.call_tool("list_databases", {})
             assert databases.isError is False
-            assert "app_development" in databases.content[0].text
+            assert "app_development" in text_at(databases.content)
 
             select = await client.call_tool("execute_sql", {"sql": "SELECT 1 AS value"})
             assert select.isError is False
             assert select.structuredContent is not None
             assert "result" in select.structuredContent
-            assert "1" in select.content[0].text
+            assert "1" in text_at(select.content)
 
             write = await client.call_tool(
                 "execute_sql",

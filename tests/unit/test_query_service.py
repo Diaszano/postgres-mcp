@@ -1,3 +1,4 @@
+
 import asyncio
 import inspect
 import json
@@ -19,6 +20,7 @@ from postgres_mcp.query_limits.results import encode_bounded_result
 from postgres_mcp.security.errors import to_public_error
 from postgres_mcp.sql import SafeSqlDriver
 from postgres_mcp.sql import SqlDriver
+from tests.type_helpers import text_at
 
 
 def result():
@@ -61,7 +63,7 @@ async def test_guarded_small_result_preserves_text_fallback(monkeypatch, guarded
     monkeypatch.setattr(server, "get_sql_driver", get_driver)
     response = await server.execute_sql("SELECT 1")
     assert response[0].type == "text"
-    payload = json.loads(response[0].text)
+    payload = json.loads(text_at(response))
     assert payload["rows"] == [{"answer": 1}]
     assert payload["returned_rows"] == 1
     assert payload["truncated"] is False
@@ -91,11 +93,11 @@ async def test_mcp_byte_budget_counts_escaping_and_wrapper(monkeypatch, bytes_be
     monkeypatch.setattr(server, "get_sql_driver", get_driver)
     response = await server.execute_sql("SELECT 1")
     if bytes_below_boundary:
-        assert response[0].text == "Error: The query result exceeds the response size limit."
+        assert text_at(response) == "Error: The query result exceeds the response size limit."
     else:
         serialized = mcp_result(response).model_dump_json(exclude_none=True).encode("utf-8")
         assert len(serialized) == budget
-        payload = json.loads(response[0].text)
+        payload = json.loads(text_at(response))
         assert payload["rows"] == rows[:1]
         assert payload["returned_rows"] == 1
         assert payload["truncated"] is True
@@ -124,7 +126,7 @@ async def test_deadline_covers_final_mcp_serialization(monkeypatch, guarded):
     monkeypatch.setattr(server, "get_sql_driver", get_driver)
     monkeypatch.setattr(server, "query_admission", ShortAdmission(1))
     monkeypatch.setattr(CallToolResult, "model_dump_json", slow_dump)
-    assert (await server.execute_sql("SELECT 1"))[0].text == "Error: The query exceeded its time limit."
+    assert text_at(await server.execute_sql("SELECT 1")) == "Error: The query exceeded its time limit."
     assert remaining_query_seconds() is None
 
 
@@ -141,7 +143,7 @@ async def test_rollout_off_is_behaviorally_legacy(monkeypatch, rows, expected):
         yield driver
 
     monkeypatch.setattr(server, "get_sql_driver", get_driver)
-    assert (await server.execute_sql("SELECT 1"))[0].text == expected
+    assert text_at(await server.execute_sql("SELECT 1")) == expected
     driver.execute_bounded_query.assert_not_called()
 
 
@@ -153,7 +155,7 @@ async def test_future_pagination_rejected_before_checkout(monkeypatch, enabled, 
     get_driver = AsyncMock()
     monkeypatch.setattr(server, "get_sql_driver", get_driver)
     response = await server.execute_sql("SELECT 1", **options)
-    assert "pagination" in response[0].text.lower()
+    assert "pagination" in text_at(response).lower()
     get_driver.assert_not_called()
 
 
@@ -168,10 +170,10 @@ async def test_guarded_restricted_queries_keep_validation(monkeypatch, guarded):
         yield driver
 
     monkeypatch.setattr(server, "get_sql_driver", get_driver)
-    assert "not allowed" in (await server.execute_sql("SELECT secret_function()"))[0].text
+    assert "not allowed" in text_at(await server.execute_sql("SELECT secret_function()"))
     base.execute_bounded_query.assert_not_called()
     response = await server.execute_sql("SELECT 1", timeout_seconds=60)
-    assert json.loads(response[0].text)["rows"] == [{"answer": 1}]
+    assert json.loads(text_at(response))["rows"] == [{"answer": 1}]
 
 
 @pytest.mark.asyncio
@@ -193,11 +195,14 @@ async def test_restricted_timeout_uses_shared_deadline(monkeypatch, enabled):
         yield driver
 
     monkeypatch.setattr(server, "get_sql_driver", get_driver)
-    response = await server.execute_sql("SELECT 1", **({"timeout_seconds": 60} if enabled else {}))
     if enabled:
-        assert json.loads(response[0].text)["rows"] == [{"answer": 1}]
+        response = await server.execute_sql("SELECT 1", timeout_seconds=60)
     else:
-        assert response[0].text == "Error: The query exceeded its time limit."
+        response = await server.execute_sql("SELECT 1")
+    if enabled:
+        assert json.loads(text_at(response))["rows"] == [{"answer": 1}]
+    else:
+        assert text_at(response) == "Error: The query exceeded its time limit."
 
 
 @pytest.mark.asyncio
@@ -220,7 +225,7 @@ async def test_confirmed_query_timeout_maps_public_code(monkeypatch, enabled):
 
     monkeypatch.setattr(server, "get_sql_driver", get_driver)
     monkeypatch.setattr(server, "format_exception_response", capture)
-    assert (await server.execute_sql("SELECT 1"))[0].text == "Error: The query exceeded its time limit."
+    assert text_at(await server.execute_sql("SELECT 1")) == "Error: The query exceeded its time limit."
     assert to_public_error(errors[0]).code == "QUERY_TIMEOUT"
 
 
@@ -247,7 +252,7 @@ async def test_deadline_covers_serialization(monkeypatch, guarded):
     monkeypatch.setattr(server, "get_sql_driver", get_driver)
     monkeypatch.setattr(server, "query_admission", ShortAdmission(1), raising=False)
     monkeypatch.setattr(server, "encode_bounded_result", slow_encode, raising=False)
-    assert (await server.execute_sql("SELECT 1"))[0].text == "Error: The query exceeded its time limit."
+    assert text_at(await server.execute_sql("SELECT 1")) == "Error: The query exceeded its time limit."
     assert remaining_query_seconds() is None
 
 
@@ -262,7 +267,7 @@ async def test_stateful_hypopg_query_never_enables_lookahead(monkeypatch, guarde
 
     monkeypatch.setattr(server, "get_sql_driver", get_driver)
     response = await server.execute_sql("SELECT hypopg_reset()", max_rows=1)
-    payload = json.loads(response[0].text)
+    payload = json.loads(text_at(response))
     assert payload["truncated"] is True
     assert payload["limit_reached"] == "max_rows"
     assert base.execute_bounded_query.await_args.kwargs["safe_row_yielding"] is False
@@ -284,7 +289,7 @@ async def test_stateful_hypopg_query_never_enables_lookahead(monkeypatch, guarde
 async def test_guarded_non_bounded_sql_is_rejected_before_checkout(monkeypatch, guarded, sql):
     get_driver = AsyncMock()
     monkeypatch.setattr(server, "get_sql_driver", get_driver)
-    assert "single read-only SELECT" in (await server.execute_sql(sql))[0].text
+    assert "single read-only SELECT" in text_at(await server.execute_sql(sql))
     get_driver.assert_not_called()
 
 
@@ -329,7 +334,7 @@ async def test_admission_limits_leases_and_cancellation_releases_them(monkeypatc
         assert leases == 0
         driver.execute_bounded_query.side_effect = None
         driver.execute_bounded_query.return_value = result()
-        assert json.loads((await server.execute_sql("SELECT 3"))[0].text)["returned_rows"] == 1
+        assert json.loads(text_at(await server.execute_sql("SELECT 3")))["returned_rows"] == 1
     finally:
         for task in (holder, waiter):
             if task is not None and not task.done():

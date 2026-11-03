@@ -4,18 +4,20 @@ from unittest.mock import MagicMock
 import pytest
 
 from postgres_mcp.application.query_service import QueryExecutionService
+from postgres_mcp.database_config import parse_database_config
 from postgres_mcp.observability.metrics import SimpleMetrics
 from postgres_mcp.pagination.cursors import InMemoryCursorStore
 from postgres_mcp.query_limits.policy import QueryLimits
 from postgres_mcp.query_limits.results import BoundedQueryResult
+from postgres_mcp.sql.database_catalog import DatabaseCatalog
 from postgres_mcp.sql.database_registry import DatabaseRegistry
 
 
 @pytest.mark.asyncio
 async def test_registry_lifecycle_gauges():
     metrics = SimpleMetrics(enabled=True)
-    catalog = MagicMock()
-    catalog.list_databases = AsyncMock(return_value=[])
+    config = parse_database_config({"DATABASE_URI": "postgresql://localhost/postgres"}, None, None)
+    catalog = DatabaseCatalog(config, discover=AsyncMock(return_value={"postgres"}))
 
     registry = DatabaseRegistry(catalog, metrics=metrics)
     assert registry.metrics is metrics
@@ -30,7 +32,7 @@ async def test_queries_histogram_and_errors():
     metrics = SimpleMetrics(enabled=True)
     driver = MagicMock()
     driver.execute_bounded_query = AsyncMock(
-        return_value=BoundedQueryResult(rows=[], returned_rows=0, truncated=False, limit_reached=None, execution_time_ms=10.0, timeout_seconds=5)
+        return_value=BoundedQueryResult(rows=[], returned_rows=0, truncated=False, limit_reached=None, execution_time_ms=10, timeout_seconds=5)
     )
 
     def fake_driver(database=None):
@@ -50,7 +52,7 @@ async def test_queries_histogram_and_errors():
     await service.execute("SELECT 1", "default", limits)
     # Check that query was recorded with success outcome
     key = (("operation", "query"), ("outcome", "success"), ("mode", "unrestricted"))
-    assert metrics._counters[key] == 1
+    assert (dict(key), 1) in metrics.collect()
 
 
 def test_cursor_expiration_metrics():
@@ -59,15 +61,15 @@ def test_cursor_expiration_metrics():
     assert store.metrics is metrics
 
     token = store.create(sql="SELECT 1", order_by=["id"], principal=None, database=None)
-    assert metrics._counters[(("operation", "cursor"), ("action", "issue"))] == 1
+    assert ({"operation": "cursor", "action": "issue"}, 1) in metrics.collect()
 
     entry = store.consume(token, principal=None)
     assert entry is not None
-    assert metrics._counters[(("operation", "cursor"), ("action", "consume"))] == 1
+    assert ({"operation": "cursor", "action": "consume"}, 1) in metrics.collect()
 
 
 @pytest.mark.asyncio
 async def test_cancel_decrements_inflight():
     metrics = SimpleMetrics(enabled=True)
     metrics.record_query(duration_seconds=0.01, outcome="cancelled", mode="restricted")
-    assert metrics._counters[(("operation", "query"), ("outcome", "cancelled"), ("mode", "restricted"))] == 1
+    assert ({"operation": "query", "outcome": "cancelled", "mode": "restricted"}, 1) in metrics.collect()

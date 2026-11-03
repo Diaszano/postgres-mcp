@@ -1,3 +1,5 @@
+# pyright: reportPrivateUsage=false
+
 import json
 from contextlib import asynccontextmanager
 from unittest.mock import patch
@@ -9,6 +11,7 @@ from postgres_mcp.query_limits.config import QueryBudgetConfig
 from postgres_mcp.query_limits.results import BoundedQueryResult
 from postgres_mcp.security.errors import PublicToolError
 from postgres_mcp.server import execute_sql
+from tests.type_helpers import text_at
 
 
 def test_agent_override_within_ceilings():
@@ -34,7 +37,7 @@ async def test_hard_limits_rejected_before_checkout(monkeypatch, max_rows, timeo
     with patch("postgres_mcp.server.get_sql_driver") as get_driver:
         response = await execute_sql("SELECT 1", None, max_rows, timeout_seconds)
 
-    assert "exceeds the configured limit" in response[0].text
+    assert "exceeds the configured limit" in text_at(response)
     get_driver.assert_not_called()
 
 
@@ -65,7 +68,7 @@ async def test_registered_tool_rejects_coercive_budget_inputs(monkeypatch):
         assert calls == []
         for value in (100, None):
             response = await manager.call_tool(name, {"sql": "SELECT 1", "max_rows": value})
-            assert json.loads(response[0].text)["rows"] == []
+            assert json.loads(text_at(response))["rows"] == []
         assert calls == [None, None]
     finally:
         manager.remove_tool(name)

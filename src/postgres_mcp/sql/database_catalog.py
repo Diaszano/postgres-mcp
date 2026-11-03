@@ -56,6 +56,10 @@ class DatabaseCatalog:
         self._generation = 0
         self._last_forced_at: float = float("-inf")
 
+    @property
+    def config(self) -> DatabaseConfig:
+        return self._config
+
     def _filter(self, discovered: set[str]) -> list[str]:
         allowed = set(self._config.allowed_databases)
         excluded = set(self._config.excluded_databases)

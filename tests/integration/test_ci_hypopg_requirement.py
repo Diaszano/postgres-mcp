@@ -1,6 +1,7 @@
 """Tests verifying CI workflow separation, HypoPG gating, and independent job failure semantics."""
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -10,7 +11,7 @@ WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
 
 @pytest.fixture(scope="module")
-def workflow_def() -> dict:
+def workflow_def() -> dict[str, Any]:
     """Parse .github/workflows/ci.yml."""
     assert WORKFLOW_PATH.exists(), f"Missing CI workflow file at {WORKFLOW_PATH}"
     with open(WORKFLOW_PATH, encoding="utf-8") as f:
@@ -18,7 +19,7 @@ def workflow_def() -> dict:
     return data
 
 
-def test_unit_job_never_requires_docker(workflow_def: dict):
+def test_unit_job_never_requires_docker(workflow_def: dict[str, Any]):
     """The unit test CI job must be isolated and never require Docker service or daemon."""
     jobs = workflow_def.get("jobs", {})
     # Check for dedicated unit test job
@@ -48,7 +49,7 @@ def test_required_hypopg_missing_is_failure():
     assert "FALLBACK_IMAGE" not in content or "raise" in content or "fail" in content
 
 
-def test_ci_matrix_executes_pg16_17_18(workflow_def: dict):
+def test_ci_matrix_executes_pg16_17_18(workflow_def: dict[str, Any]):
     """Integration job matrix includes PostgreSQL versions, explicitly documenting PG 18 support status."""
     jobs = workflow_def.get("jobs", {})
     integration_job_key = next((k for k in jobs if "integration" in k.lower()), None)
@@ -69,7 +70,7 @@ def test_ci_matrix_executes_pg16_17_18(workflow_def: dict):
     assert "18" in versions_str or "18" in str(integration_job), "PostgreSQL 18 status must be acknowledged in matrix"
 
 
-def test_full_ci_fails_on_any_required_job(workflow_def: dict):
+def test_full_ci_fails_on_any_required_job(workflow_def: dict[str, Any]):
     """Workflow must separate lint, typecheck, unit, and integration jobs for branch protection."""
     jobs = workflow_def.get("jobs", {})
     job_names = [k.lower() for k in jobs.keys()]

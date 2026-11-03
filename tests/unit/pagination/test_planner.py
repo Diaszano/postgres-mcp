@@ -3,6 +3,7 @@ import sqlite3
 import pytest
 from pglast import ast
 from pglast import parse_sql
+from pglast.ast import SelectStmt
 
 from postgres_mcp.pagination.eligibility import PageableQuery
 from postgres_mcp.pagination.planner import build_page_query
@@ -27,6 +28,9 @@ def test_keyset_uses_bound_last_seen_value():
     assert marker not in plan.sql
     assert plan.params == (marker, 100)
     statement = parse_sql(plan.sql.replace("%s", "$1"))[0].stmt
+    assert isinstance(statement, SelectStmt)
+    assert statement.whereClause is not None
+    assert statement.sortClause is not None
     assert isinstance(statement.whereClause.rexpr, ast.ParamRef)
     assert tuple(part.sval for part in statement.whereClause.name) == ("pg_catalog", ">")
     assert statement.sortClause[0].node.fields[0].sval == "id"
@@ -36,6 +40,8 @@ def test_existing_filter_preserved():
     query = PageableQuery("SELECT id FROM items WHERE active = true OR id = 2 ORDER BY id", "id")
     plan = build_page_query(query, offset=None, last_key=100, limit=10)
     statement = parse_sql(plan.sql.replace("%s", "$1"))[0].stmt
+    assert isinstance(statement, SelectStmt)
+    assert statement.whereClause is not None
     assert statement.whereClause.boolop.name == "AND_EXPR"
     assert statement.whereClause.args[0].boolop.name == "OR_EXPR"
     assert len(statement.whereClause.args[0].args) == 2

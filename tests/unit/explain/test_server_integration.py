@@ -1,3 +1,4 @@
+
 import json
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock
@@ -8,6 +9,7 @@ import pytest
 import pytest_asyncio
 
 from postgres_mcp.server import explain_query
+from tests.type_helpers import text_at
 
 
 @pytest_asyncio.fixture
@@ -63,7 +65,7 @@ async def test_explain_query_integration():
                 # Verify result matches our expected plan data
                 assert isinstance(result, list)
                 assert len(result) == 1
-                assert result[0].text == result_text
+                assert text_at(result) == result_text
 
 
 @pytest.mark.asyncio
@@ -87,7 +89,7 @@ async def test_explain_query_with_analyze_integration():
                 # Verify result matches our expected plan data
                 assert isinstance(result, list)
                 assert len(result) == 1
-                assert result[0].text == result_text
+                assert text_at(result) == result_text
 
 
 @pytest.mark.asyncio
@@ -123,7 +125,7 @@ async def test_explain_query_with_hypothetical_indexes_integration():
                 # Verify result matches our expected plan data
                 assert isinstance(result, list)
                 assert len(result) == 1
-                assert result[0].text == result_text
+                assert text_at(result) == result_text
 
 
 @pytest.mark.asyncio
@@ -159,7 +161,7 @@ async def test_explain_query_missing_hypopg_integration():
                 # Verify result
                 assert isinstance(result, list)
                 assert len(result) == 1
-                assert missing_ext_message in result[0].text
+                assert missing_ext_message in text_at(result)
 
 
 @pytest.mark.asyncio
@@ -182,4 +184,4 @@ async def test_explain_query_error_handling_integration():
             # Verify error is correctly formatted
             assert isinstance(result, list)
             assert len(result) == 1
-            assert error_message in result[0].text
+            assert error_message in text_at(result)

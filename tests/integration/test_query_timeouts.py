@@ -1,3 +1,4 @@
+
 import asyncio
 
 import pytest
@@ -8,6 +9,7 @@ from postgres_mcp.query_limits.admission import QueryAdmission
 from postgres_mcp.security.errors import PublicToolError
 from postgres_mcp.sql.sql_driver import DbConnPool
 from postgres_mcp.sql.sql_driver import SqlDriver
+from tests.type_helpers import first_item
 
 
 @pytest_asyncio.fixture
@@ -25,17 +27,17 @@ async def test_statement_timeout_is_transaction_local(query_pool):
     admission = QueryAdmission(1)
     driver = SqlDriver(query_pool)
     async with query_pool.pool.connection() as connection:
-        original = (await (await connection.execute("SHOW statement_timeout")).fetchone())[0]
+        original = first_item(await (await connection.execute("SHOW statement_timeout")).fetchone())
 
     async def operation():
         return await driver.execute_query("SHOW statement_timeout")
 
     rows = await admission.run(operation, 2)
-    scoped = str(rows[0].cells["statement_timeout"])
+    scoped = str(first_item(rows).cells["statement_timeout"])
     async with query_pool.pool.connection() as connection:
         assert connection.info.transaction_status == TransactionStatus.IDLE
-        restored = (await (await connection.execute("SHOW statement_timeout")).fetchone())[0]
-        milliseconds = (await (await connection.execute("SELECT EXTRACT(EPOCH FROM %s::interval) * 1000", (scoped,))).fetchone())[0]
+        restored = first_item(await (await connection.execute("SHOW statement_timeout")).fetchone())
+        milliseconds = first_item(await (await connection.execute("SELECT EXTRACT(EPOCH FROM %s::interval) * 1000", (scoped,))).fetchone())
     assert 0 < milliseconds <= 2000
     assert restored == original
 
@@ -56,8 +58,8 @@ async def test_server_deadline_cancels_slow_statement(query_pool, force_readonly
     assert asyncio.get_running_loop().time() - started < 1.5
     async with query_pool.pool.connection() as connection:
         assert connection.info.transaction_status == TransactionStatus.IDLE
-        assert (await (await connection.execute("SELECT 1")).fetchone())[0] == 1
-        assert (await (await connection.execute("SHOW statement_timeout")).fetchone())[0] == "0"
+        assert first_item(await (await connection.execute("SELECT 1")).fetchone()) == 1
+        assert first_item(await (await connection.execute("SHOW statement_timeout")).fetchone()) == "0"
 
 
 @pytest.mark.asyncio
@@ -78,8 +80,8 @@ async def test_postgres_statement_timeout_rolls_back(query_pool):
     assert error.value.code == "QUERY_TIMEOUT"
     async with query_pool.pool.connection() as connection:
         assert connection.info.transaction_status == TransactionStatus.IDLE
-        assert (await (await connection.execute("SHOW statement_timeout")).fetchone())[0] == "0"
-        assert (await (await connection.execute("SELECT count(*) FROM timeout_marker")).fetchone())[0] == 0
+        assert first_item(await (await connection.execute("SHOW statement_timeout")).fetchone()) == "0"
+        assert first_item(await (await connection.execute("SELECT count(*) FROM timeout_marker")).fetchone()) == 0
 
 
 @pytest.mark.asyncio
@@ -97,7 +99,7 @@ async def test_pool_checkout_consumes_the_statement_deadline(query_pool):
             await asyncio.sleep(0.2)
             assert not task.done()
         rows = await task
-        assert 0 < rows[0].cells["timeout"].total_seconds() <= 0.9
+        assert 0 < first_item(rows).cells["timeout"].total_seconds() <= 0.9
     finally:
         if task is not None and not task.done():
             task.cancel()

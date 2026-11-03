@@ -1,5 +1,9 @@
+# pyright: reportPrivateUsage=false
+
 import asyncio
 from contextlib import asynccontextmanager
+from typing import Any
+from typing import cast
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -15,6 +19,7 @@ from postgres_mcp.server import list_objects
 from postgres_mcp.server import list_schemas
 from postgres_mcp.sql import SafeSqlDriver
 from postgres_mcp.sql import SqlDriver
+from tests.type_helpers import text_at
 
 BOOTSTRAP = "postgresql://user:s3cret@db.internal:5432/app_main"
 
@@ -129,7 +134,7 @@ async def test_tool_holds_lease_for_its_queries(discovery):
 
     with patch.object(SqlDriver, "_execute_with_connection", AsyncMock(side_effect=fake_execute)):
         result = await list_schemas()
-    assert "public" in result[0].text
+    assert "public" in text_at(result)
     assert seen == [1]
     assert discovery.leases["app_main"] == 0
 
@@ -231,8 +236,8 @@ _SCHEMA_TOOL_CALLS = [
 async def test_schema_tools_use_selected_database(discovery, call):
     calls: list[str] = []
     with patch.object(SqlDriver, "_execute_with_connection", _catalog_execute(discovery, calls)):
-        selected = (await call("app_testing"))[0].text
-        default = (await call(None))[0].text
+        selected = text_at(await call("app_testing"))
+        default = text_at(await call(None))
     assert "cat_app_testing" in selected and "cat_app_main" not in selected
     assert "cat_app_main" in default and "cat_app_testing" not in default
     assert discovery.requested == ["app_testing", None]
@@ -253,10 +258,10 @@ async def test_legacy_positional_calls_still_work():
         patch("postgres_mcp.server.current_access_mode", AccessMode.UNRESTRICTED),
         patch.object(SqlDriver, "_execute_with_connection", _catalog_execute(registry, calls)),
     ):
-        schemas = (await list_schemas())[0].text
-        objects = (await list_objects("public", "sequence"))[0].text
-        details = (await get_object_details("public", "s", "sequence"))[0].text
-        explicit = (await list_schemas("app_main"))[0].text
+        schemas = text_at(await list_schemas())
+        objects = text_at(await list_objects("public", "sequence"))
+        details = text_at(await get_object_details("public", "s", "sequence"))
+        explicit = text_at(await list_schemas("app_main"))
     assert all("cat_app_main" in text for text in (schemas, objects, details, explicit))
     assert calls == ["app_main"] * 4
     assert registry.requested == []
@@ -276,7 +281,7 @@ async def test_denied_database_never_queries(discovery, call):
     denying = Denying()
     execute = AsyncMock()
     with patch("postgres_mcp.server.registry", denying), patch.object(SqlDriver, "_execute_with_connection", execute):
-        text = (await call("secret_db"))[0].text
+        text = text_at(await call("secret_db"))
     assert text == "Error: The requested database is not available."
     assert "secret_db" not in text
     execute.assert_not_called()
@@ -292,7 +297,7 @@ async def test_legacy_denied_database_never_queries_via_tools(call):
         patch("postgres_mcp.server.db_connection", MagicMock()),
         patch.object(SqlDriver, "_execute_with_connection", execute),
     ):
-        text = (await call("app_testing"))[0].text
+        text = text_at(await call("app_testing"))
     assert text == "Error: The requested database is not available."
     assert "app_testing" not in text
     execute.assert_not_called()
@@ -325,7 +330,7 @@ class _InfoRegistry:
 async def test_list_databases_reports_default_connection_state_stale():
     reg = _InfoRegistry([DatabaseInfo("app_testing", True, "not_connected", False)])
     with patch("postgres_mcp.server.database_config", _config(True)), patch("postgres_mcp.server.registry", reg):
-        rows = json.loads((await server.list_databases(refresh=True))[0].text)
+        rows = json.loads(text_at(await server.list_databases(refresh=True)))
     assert [row["name"] for row in rows] == ["app_testing"]
     assert rows[0]["is_default"] is True
     assert rows[0]["connection_state"] == "not_connected"
@@ -336,7 +341,7 @@ async def test_list_databases_reports_default_connection_state_stale():
 @pytest.mark.asyncio
 async def test_list_databases_does_not_open_extra_pools():
     reg = FakeRegistry()
-    reg.list_databases = _InfoRegistry([DatabaseInfo("a", True, "not_connected", False)]).list_databases
+    cast(Any, reg).list_databases = _InfoRegistry([DatabaseInfo("a", True, "not_connected", False)]).list_databases
     with patch("postgres_mcp.server.database_config", _config(True)), patch("postgres_mcp.server.registry", reg):
         await server.list_databases()
     assert reg.pools == {} and reg.requested == []
@@ -346,7 +351,7 @@ async def test_list_databases_does_not_open_extra_pools():
 async def test_list_databases_error_is_reported_not_raised():
     reg = _InfoRegistry(error=RuntimeError("Database discovery is unavailable"))
     with patch("postgres_mcp.server.database_config", _config(True)), patch("postgres_mcp.server.registry", reg):
-        text = (await server.list_databases())[0].text
+        text = text_at(await server.list_databases())
     assert text == "Error: The operation failed."
     assert "Database discovery is unavailable" not in text
 
@@ -355,7 +360,7 @@ async def test_list_databases_error_is_reported_not_raised():
 async def test_list_databases_legacy_exposes_only_bootstrap():
     conn = MagicMock(is_valid=True)
     with patch("postgres_mcp.server.database_config", _config(False)), patch("postgres_mcp.server.db_connection", conn):
-        rows = json.loads((await server.list_databases())[0].text)
+        rows = json.loads(text_at(await server.list_databases()))
     assert rows == [{"name": "app_main", "is_default": True, "connection_state": "connected", "catalog_stale": False}]
 
 
@@ -364,12 +369,13 @@ async def test_list_databases_legacy_without_dbname_has_null_name():
     cfg = parse_database_config({"DATABASE_URI": "postgresql://u:p@h/"}, None, None)
     conn = MagicMock(is_valid=False)
     with patch("postgres_mcp.server.database_config", cfg), patch("postgres_mcp.server.db_connection", conn):
-        rows = json.loads((await server.list_databases())[0].text)
+        rows = json.loads(text_at(await server.list_databases()))
     assert rows == [{"name": None, "is_default": True, "connection_state": "unavailable", "catalog_stale": False}]
 
 
 def test_list_databases_is_registered_read_only():
     tool = next(t for t in server.mcp._tool_manager.list_tools() if t.name == "list_databases")
+    assert tool.annotations is not None
     assert tool.annotations.readOnlyHint is True
     assert [t.name for t in server.mcp._tool_manager.list_tools()].count("list_databases") == 1
 
@@ -408,6 +414,7 @@ async def test_cli_legacy_default_is_unrestricted(monkeypatch):
 @pytest.mark.asyncio
 async def test_cli_legacy_positional_url_still_works(monkeypatch):
     await _run_main(monkeypatch, [BOOTSTRAP], {})
+    assert server.database_config is not None
     assert server.database_config.bootstrap_uri == BOOTSTRAP
 
 
@@ -475,7 +482,7 @@ async def test_startup_degraded_does_not_list_falsely(monkeypatch):
     with patch.object(database_catalog.DatabaseCatalog, "__init__", init), patch("postgres_mcp.server.mcp.run_stdio_async", AsyncMock()):
         await server.main()
         assert server.registry is not None
-        text = (await server.list_databases())[0].text
+        text = text_at(await server.list_databases())
     assert text == "Error: The database is temporarily unavailable."
     assert "boom s3cret" not in text
 
@@ -503,8 +510,8 @@ def _routing_execute(registry: FakeRegistry, calls: list[tuple[str, str]]):
 async def test_execute_sql_routes_by_database(discovery):
     calls: list[tuple[str, str]] = []
     with patch.object(SqlDriver, "_execute_with_connection", _routing_execute(discovery, calls)):
-        selected = (await execute_sql(sql="SELECT current_database() AS db", database="app_testing"))[0].text
-        default = (await execute_sql(sql="SELECT current_database() AS db"))[0].text
+        selected = text_at(await execute_sql(sql="SELECT current_database() AS db", database="app_testing"))
+        default = text_at(await execute_sql(sql="SELECT current_database() AS db"))
     assert "cat_app_testing" in selected and "cat_app_main" not in selected
     assert "cat_app_main" in default and "cat_app_testing" not in default
     assert [name for name, _ in calls] == ["app_testing", "app_main"]
@@ -529,10 +536,10 @@ async def test_database_selection_and_access_mode_unchanged(discovery, monkeypat
         return BoundedQueryResult([{"db": name}], 1, False, None, 0, limits["timeout_seconds"])
 
     with patch.object(SqlDriver, "execute_bounded_query", bounded):
-        selected = (await execute_sql("SELECT current_database()", "app_testing"))[0].text
-        default = (await execute_sql("SELECT current_database()"))[0].text
+        selected = text_at(await execute_sql("SELECT current_database()", "app_testing"))
+        default = text_at(await execute_sql("SELECT current_database()"))
         if access_mode == AccessMode.RESTRICTED:
-            assert "not allowed" in (await execute_sql("SELECT secret_function()"))[0].text
+            assert "not allowed" in text_at(await execute_sql("SELECT secret_function()"))
     assert '"db":"app_testing"' in selected
     assert '"db":"app_main"' in default
     assert calls == ["app_testing", "app_main"]
@@ -551,7 +558,7 @@ async def test_guarded_unknown_database_never_falls_back(discovery, monkeypatch)
     monkeypatch.setattr(server, "query_budget_config", QueryBudgetConfig(enabled=True))
     monkeypatch.setattr(discovery, "acquire", reject)
     with patch.object(SqlDriver, "execute_bounded_query", AsyncMock()) as bounded:
-        assert (await execute_sql("SELECT 1", "unknown"))[0].text == "Error: The requested database is not available."
+        assert text_at(await execute_sql("SELECT 1", "unknown")) == "Error: The requested database is not available."
     bounded.assert_not_called()
     assert discovery.pools == {}
 
@@ -578,10 +585,10 @@ async def test_explain_query_routes_by_database(discovery, call):
         patch.object(SqlDriver, "_execute_with_connection", _routing_execute(discovery, calls)),
         patch("postgres_mcp.server.database_session", fake_database_session),
     ):
-        selected = (await call("app_testing"))[0].text
+        selected = text_at(await call("app_testing"))
         selected_calls = list(calls)
         calls.clear()
-        default = (await call(None))[0].text
+        default = text_at(await call(None))
     assert not selected.startswith("Error") and not default.startswith("Error")
     # Every query of the call (hypopg check, hypopg_reset, EXPLAIN) runs on the requested pool only.
     assert selected_calls and {name for name, _ in selected_calls} == {"app_testing"}
@@ -619,7 +626,7 @@ async def test_index_tools_use_database_specific_driver(method):
 
     selected = MagicMock(name="selected_driver")
     requested: list[str | None] = []
-    session_requests: list[dict] = []
+    session_requests: list[dict[str, Any]] = []
 
     @asynccontextmanager
     async def fake_get_sql_driver(database=None):
@@ -738,7 +745,7 @@ async def test_health_reports_expected_errors_as_error_response(exc, expected):
         yield  # pragma: no cover
 
     with patch("postgres_mcp.server.get_sql_driver", boom):
-        text = (await analyze_db_health("all", "x"))[0].text
+        text = text_at(await analyze_db_health("all", "x"))
     assert text == f"Error: {expected}"
     assert str(exc) not in text
 
@@ -894,6 +901,7 @@ async def test_contract_legacy_defaults_and_required_arguments_unchanged(monkeyp
 async def test_contract_execute_sql_annotations_follow_access_mode(monkeypatch, argv, env, title, read_only, destructive):
     tools = await _tools_after_startup(monkeypatch, argv, env)
     ann = tools["execute_sql"].annotations
+    assert ann is not None
     assert (ann.title, ann.readOnlyHint, ann.destructiveHint) == (title, read_only, destructive)
 
 
@@ -901,4 +909,5 @@ async def test_contract_execute_sql_annotations_follow_access_mode(monkeypatch, 
 async def test_contract_every_other_tool_is_read_only(monkeypatch):
     tools = await _tools_after_startup(monkeypatch, [], DISCOVER)
     for name in (LEGACY_TOOLS - {"execute_sql"}) | {"list_databases"}:
-        assert tools[name].annotations.readOnlyHint is True, name
+        annotations = tools[name].annotations
+        assert annotations is not None and annotations.readOnlyHint is True, name

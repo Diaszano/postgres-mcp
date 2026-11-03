@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false
 import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -6,6 +7,7 @@ from unittest.mock import patch
 
 import pytest
 from pglast import parse_sql
+from pglast.ast import SelectStmt
 
 from postgres_mcp.index.llm_opt import LLMOptimizerTool
 
@@ -24,7 +26,9 @@ async def test_explain_plan_literals_are_not_logged(caplog):
         patch.object(optimizer, "_extract_indexes_from_explain_plan_with_columns", AsyncMock(side_effect=RuntimeError("stop"))),
         caplog.at_level(logging.DEBUG, logger="postgres_mcp.index.llm_opt"),
     ):
+        statement = parse_sql(sql)[0].stmt
+        assert isinstance(statement, SelectStmt)
         with pytest.raises(RuntimeError, match="stop"):
-            await optimizer._generate_recommendations([(sql, parse_sql(sql)[0].stmt, 1.0)])
+            await optimizer._generate_recommendations([(sql, statement, 1.0)])
 
     assert "private@example.com" not in caplog.text

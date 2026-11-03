@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -14,7 +15,7 @@ import yaml
 from scripts.ci.validate_release import compare_release_versions
 
 
-def _load_release_workflow() -> dict:
+def _load_release_workflow() -> dict[str, Any]:
     root = Path(__file__).resolve().parents[2]
     path = root / ".github" / "workflows" / "release.yml"
     assert path.is_file(), ".github/workflows/release.yml missing"
