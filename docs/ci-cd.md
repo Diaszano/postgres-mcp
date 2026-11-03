@@ -53,12 +53,12 @@ The project uses GitHub Actions workflows for continuous validation and zero-man
 Users and orchestrators should deploy images using immutable content digests:
 
 ```bash
-# Pull image by verified immutable SHA256 digest:
-docker pull ghcr.io/diaszano/postgres-mcp@sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+# Replace the placeholder with the digest verified for your deployment:
+docker pull ghcr.io/diaszano/postgres-mcp@sha256:<verified-digest>
 
 # Run container
 docker run -it --rm \
-  ghcr.io/diaszano/postgres-mcp@sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 \
+  ghcr.io/diaszano/postgres-mcp@sha256:<verified-digest> \
   postgres://mcp_agent:password@localhost:5432/mydb
 ```
 
@@ -69,7 +69,10 @@ In rare scenarios where Python Semantic Release successfully tags a release and 
 1. **Do not create a duplicate version or re-tag manually.**
 2. Navigate to Actions -> **Retry Publish** workflow (`.github/workflows/retry-publish.yml`).
 3. Click **Run workflow**, enter the existing verified tag (e.g. `v0.3.0`), and submit.
-4. The workflow verifies the commit ancestry and `pyproject.toml` version using `scripts/ci/validate_release_ref.py`, builds the staging image from the exact release commit, scans both architectures with Trivy, and promotes the missing aliases to GHCR without bumping version numbers.
+4. The workflow verifies the tag format, matching `pyproject.toml` version, and checked-out tag commit, builds the staging image from that exact commit, scans both architectures with Trivy, and repairs safe aliases without bumping version numbers.
+5. Recovery never changes a version tag to a different digest. It advances floating aliases only when their recorded image version is not newer than the requested release; missing or unparseable version metadata stops recovery. Normal release promotion and recovery share one concurrency group to prevent alias races.
+
+For a rollback, redeploy a previously verified `repository@sha256:<verified-digest>` reference. This changes the deployed image only; it does not publish a release or move registry aliases.
 
 ## 5. End-to-End Delivery Verification & Handoff
 

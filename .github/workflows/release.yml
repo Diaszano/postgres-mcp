@@ -17,7 +17,7 @@ on:
         value: ${{ jobs.semantic-release.outputs.version }}
 
 concurrency:
-  group: release-main
+  group: image-alias-promotion
   cancel-in-progress: false
 
 permissions:
@@ -130,6 +130,7 @@ jobs:
           tags: ghcr.io/diaszano/postgres-mcp:sha-${{ needs.semantic-release.outputs.release_sha }}
           build-args: |
             REVISION=${{ needs.semantic-release.outputs.release_sha }}
+            VERSION=${{ needs.semantic-release.outputs.version }}
           provenance: true
           sbom: true
 
@@ -142,11 +143,18 @@ jobs:
       contents: read
       packages: write
     steps:
-      - name: Checkout repository
+      - name: Checkout release commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.semantic-release.outputs.release_sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@c47758b77c9736f4b4e240847c51ce1484444347 # v3.7.1
+
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567
+        with:
+          version: v0.76.1
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
@@ -156,5 +164,8 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Promote image to stable tags
+        env:
+          IMAGE_DIGEST: ${{ needs.build-image.outputs.image_digest }}
+          IMAGE_TAG: ${{ needs.semantic-release.outputs.tag }}
         run: |
-          bash scripts/ci/promote_image.sh "ghcr.io/diaszano/postgres-mcp" "${{ needs.build-image.outputs.image_digest }}" "${{ needs.semantic-release.outputs.tag }}"
+          bash scripts/ci/promote_image.sh "ghcr.io/diaszano/postgres-mcp" "$IMAGE_DIGEST" "$IMAGE_TAG"
