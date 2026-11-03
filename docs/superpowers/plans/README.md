@@ -1,6 +1,12 @@
 # PostgreSQL MCP — Superpowers Implementation Roadmap
 
-> **Status:** All 7 implementation plans fully completed, tested with TDD, and verified with 702 unit tests passing.
+> **Historical status (2026-10 roadmap):** The seven feature plans below were recorded as completed against their original scope. Their test count and target branch are historical and are not current readiness evidence.
+
+## Current readiness evidence
+
+The separate project readiness plan is [2026-11-03-project-readiness.md](2026-11-03-project-readiness.md). Its execution ledger is maintained in `.superpowers/sdd/2026-11-03-project-readiness/progress.md`; current remote observations and limitations are summarized in [`docs/project-readiness.md`](../../project-readiness.md). Do not infer current CI, release, or registry status from the historical roadmap below.
+
+## Historical 2026-10 roadmap
 
 **Source design:** `docs/superpowers/specs/2026-10-23-postgres-mcp-security-query-pagination-design.md`  
 **Target:** `Diaszano/postgres-mcp` → `feature/multi-database`  

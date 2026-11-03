@@ -36,3 +36,23 @@ def test_guide_has_ghcr_pull_by_digest() -> None:
     ci_cd_doc = (root / "docs" / "ci-cd.md").read_text(encoding="utf-8")
 
     assert "@sha256:" in ci_cd_doc
+
+
+def test_release_checklist_uses_current_test_command_and_verified_rollback_placeholder() -> None:
+    root = Path(__file__).resolve().parents[2]
+    checklist = (root / "docs" / "release-checklist.md").read_text(encoding="utf-8").lower()
+
+    assert "pytest -q tests/unit tests/release" in checklist
+    assert "@sha256:<verified-release-digest>" in checklist
+    assert "placeholder only" in checklist
+    assert "v0.2.0" not in checklist
+
+
+def test_docs_distinguish_configured_delivery_from_remote_publication() -> None:
+    root = Path(__file__).resolve().parents[2]
+    checklist = (root / "docs" / "release-checklist.md").read_text(encoding="utf-8").lower()
+    ci_cd_doc = (root / "docs" / "ci-cd.md").read_text(encoding="utf-8").lower()
+
+    assert "remote release artifacts have not been verified" in checklist
+    assert "no successful `main` ci run" in ci_cd_doc
+    assert "ghcr publication and package access also remain unverified" in ci_cd_doc

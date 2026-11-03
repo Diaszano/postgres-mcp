@@ -13,7 +13,7 @@ The project uses GitHub Actions workflows for continuous validation and zero-man
 [.github/workflows/ci.yml]
        ├── Lint & Formatting (Ruff)
        ├── Type Checking (Pyright)
-       ├── Unit Tests (pytest tests/unit)
+       ├── Unit & Release Tests (pytest tests/unit tests/release)
        ├── Package Build (uv build)
        ├── HypoPG Integration Gate (PG16 & PG17)
        └── PR Metadata & Conventional Commits Validation
@@ -76,6 +76,8 @@ For a rollback, redeploy a previously verified `repository@sha256:<verified-dige
 
 ## 5. End-to-End Delivery Verification & Handoff
 
+The repository-readiness review on 2026-11-03 found no successful `main` CI run from which to confirm GitHub's displayed job contexts. The proposed names and remote evidence are recorded in [GitHub settings](github-settings.md). GHCR publication and package access also remain unverified.
+
 Before merging any change to `main` or tagging production versions, the full suite of automated verification gates must pass:
 
 - **Repository Hygiene & Conventions**:
@@ -86,7 +88,7 @@ Before merging any change to `main` or tagging production versions, the full sui
   - `uv lock --check`
   - `uv run ruff check .`
   - `uv run ruff format --check .`
-  - `uv run pyright`
+  - `uv run pyright` (currently reports existing diagnostics; see [project readiness](project-readiness.md))
 - **Testing Layers**:
   - `uv run pytest -q tests/unit`
   - `uv run pytest -q tests/release`

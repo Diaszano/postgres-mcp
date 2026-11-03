@@ -8,21 +8,17 @@
 
 If you discover a security vulnerability or sensitive defect in `postgres-mcp`, please **do not open a public GitHub issue**.
 
-Instead, report it responsibly via:
-- **GitHub Private Vulnerability Reporting**: Submit a private advisory through the repository's Security tab.
-- **Maintainer Contact**: Contact the lead maintainer directly at `@Diaszano`.
-
-We acknowledge receipt of security reports within 48 hours and provide status updates on remediation and coordinated release timelines.
+Instead, use GitHub Private Vulnerability Reporting from the repository's Security tab if it is enabled. Its current availability has not been verified. If it is unavailable, contact the maintainer through the GitHub profile linked from the repository. Please include a way to reproduce the issue and an affected version; the maintainer will respond as soon as possible.
 
 ---
 
 ## 2. Supply Chain Security and Artifact Attestations
 
-All official release artifacts must satisfy strict supply-chain verification:
+The release workflows are configured for the following supply-chain checks. No published release artifacts or registry attestations were verified during the 2026-11-03 readiness review:
 
-- **Immutable Package Registry**: Release images are published exclusively to GitHub Container Registry (`ghcr.io/diaszano/postgres-mcp`) with immutable digest references.
-- **Software Bill of Materials (SBOM)**: Every published container release includes SPDX/CycloneDX SBOM attestations detailing installed system packages and Python dependencies.
-- **Build Provenance**: Release images include SLSA-compliant build provenance attestations linking the container directly to the exact source commit SHA and GitHub Actions run.
+- **Package Registry**: The workflow targets GitHub Container Registry (`ghcr.io/diaszano/postgres-mcp`); package visibility and published manifests remain unverified.
+- **Software Bill of Materials (SBOM)**: Buildx is configured to generate an SBOM for each published image.
+- **Build Provenance**: Buildx is configured to generate provenance linking the image to its build inputs.
 - **Pinned Dependencies**: All dependencies are locked in `uv.lock`. Workflows pin all third-party GitHub Actions to immutable 40-character commit SHAs.
 
 ---
@@ -35,8 +31,8 @@ Every security waiver **must** explicitly document:
 1. **Identifier**: Specific CVE or GHSA ID.
 2. **Affected Package**: Name and exact version.
 3. **Exploitability Analysis**: Detailed technical rationale explaining why the issue is non-exploitable in `postgres-mcp`.
-4. **Reviewer Approval**: Sign-off from a repository owner (see [`.github/CODEOWNERS`](.github/CODEOWNERS)).
-5. **Mandatory Expiration Date**: A strict waiver expiration date (maximum 30 days). Permanent or indefinite waivers are strictly prohibited and will fail automated CI security audits upon expiry.
+4. **Maintainer Review**: Record review by a maintainer (see [`.github/CODEOWNERS`](.github/CODEOWNERS)); there is currently one observed maintainer, so this is not an independent approval requirement.
+5. **Expiration Date**: Include a review date, preferably within 30 days. Reassess the waiver when a fix becomes available.
 
 ---
 

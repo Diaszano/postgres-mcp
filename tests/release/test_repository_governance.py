@@ -14,6 +14,8 @@ def test_codeowners_protects_critical_paths() -> None:
     assert ".github/workflows/" in content, ".github/workflows/ must have owner assignment"
     assert "scripts/ci/" in content, "scripts/ci/ must have owner assignment"
     assert "pyproject.toml" in content, "pyproject.toml must have owner assignment"
+    assert "ownership and reviewer routing only" in content.lower()
+    assert "do not require self-approval" in content.lower()
 
 
 def test_upstream_credit_preserved() -> None:
@@ -72,3 +74,12 @@ def test_justfile_has_no_manual_release() -> None:
     # Only automated CI releases are allowed, no local manual release recipe
     lines = [line.strip() for line in justfile.splitlines()]
     assert "release:" not in lines, "justfile must not have a manual 'release:' target"
+
+
+def test_pull_request_template_matches_required_ci_gate() -> None:
+    root = Path(__file__).resolve().parents[2]
+    content = (root / ".github" / "PULL_REQUEST_TEMPLATE.md").read_text(encoding="utf-8")
+
+    assert "Required CI checks pass" in content
+    assert "PostgreSQL 16 and 17" in content
+    assert "all unit, integration, and release test suites pass locally" not in content

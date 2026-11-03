@@ -1,47 +1,65 @@
-"""Tests for repository governance, GitHub settings and rollback documentation."""
-
-from __future__ import annotations
+"""Tests for GitHub settings grounded in observed repository ownership and workflows."""
 
 from pathlib import Path
 
-
-def test_settings_require_main_protection() -> None:
-    root = Path(__file__).resolve().parents[2]
-    settings_file = root / "docs" / "github-settings.md"
-    assert settings_file.is_file(), "docs/github-settings.md missing"
-    content = settings_file.read_text(encoding="utf-8").lower()
-
-    assert "branch protection" in content or "ruleset" in content
-    assert "main" in content
-    assert "require status checks" in content or "status checks" in content
+ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_settings_document_release_bot_push_permission() -> None:
-    root = Path(__file__).resolve().parents[2]
-    content = (root / "docs" / "github-settings.md").read_text(encoding="utf-8")
+def test_proposal_accounts_for_the_single_observed_maintainer() -> None:
+    content = (ROOT / "docs" / "github-settings.md").read_text(encoding="utf-8").lower()
 
-    assert "github_token" in content.lower() or "actions bot" in content.lower()
-    assert "contents: write" in content.lower() or "bypass" in content.lower()
-
-
-def test_settings_restrict_force_tag_and_fork_secrets() -> None:
-    root = Path(__file__).resolve().parents[2]
-    content = (root / "docs" / "github-settings.md").read_text(encoding="utf-8").lower()
-
-    assert "force push" in content or "restrict deletions" in content
-    assert "tag" in content
+    assert "only collaborator observed" in content
+    assert "do not require an approving review" in content
+    assert "another independent maintainer" in content
 
 
-def test_rollback_by_digest_documented() -> None:
-    root = Path(__file__).resolve().parents[2]
-    content = (root / "docs" / "github-settings.md").read_text(encoding="utf-8")
+def test_proposal_uses_workflow_context_names_and_both_required_postgres_versions() -> None:
+    content = (ROOT / "docs" / "github-settings.md").read_text(encoding="utf-8")
 
-    assert "sha256:" in content or "digest" in content.lower()
-    assert "rollback" in content.lower()
+    for job in (
+        "Validate PR Conventions",
+        "Lint & Code Style",
+        "Static Type Analysis",
+        "Unit & Release Tests",
+        "Package Build & Version Gate",
+        "Integration (PG 16)",
+        "Integration (PG 17)",
+    ):
+        assert job in content
+    assert "exact displayed contexts" in content
+    assert "experimental `Integration (PG 18)`" in content
 
 
-def test_security_md_references_github_governance() -> None:
-    root = Path(__file__).resolve().parents[2]
-    security_md = (root / "SECURITY.md").read_text(encoding="utf-8")
+def test_release_bot_guidance_does_not_claim_commit_message_bypass() -> None:
+    content = (ROOT / "docs" / "github-settings.md").read_text(encoding="utf-8").lower()
 
-    assert "github-settings.md" in security_md or "governance" in security_md.lower()
+    assert "github_token" in content
+    assert "gitHub actions app" in content or "github actions app" in content
+    assert "does not grant ruleset permission" in content
+    assert "commit-message pattern as a bypass" in content
+    assert "create a new credential" in content
+
+
+def test_remote_rules_and_ghcr_unknowns_are_explicit() -> None:
+    content = (ROOT / "docs" / "github-settings.md").read_text(encoding="utf-8").lower()
+
+    assert "has not been applied" in content
+    assert "no branch protection rules or repository rulesets" in content
+    assert "ghcr package" in content
+    assert "remain unverified" in content
+
+
+def test_rollback_digest_is_labeled_as_a_placeholder() -> None:
+    content = (ROOT / "docs" / "github-settings.md").read_text(encoding="utf-8").lower()
+
+    assert "placeholder" in content
+    assert "<verified-release-digest>" in content
+    assert "sha256:0123456789" not in content
+
+
+def test_security_policy_references_governance_without_promising_sla() -> None:
+    content = (ROOT / "SECURITY.md").read_text(encoding="utf-8").lower()
+
+    assert "github-settings.md" in content
+    assert "if it is enabled" in content
+    assert "within 48 hours" not in content
