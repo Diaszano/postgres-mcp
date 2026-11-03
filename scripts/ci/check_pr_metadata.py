@@ -70,7 +70,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Validate PR title and branch metadata conventions.")
     parser.add_argument("--title", default=os.getenv("PR_TITLE", ""), help="Pull request title")
     parser.add_argument("--head-ref", default=os.getenv("PR_HEAD_REF", ""), help="Pull request head source branch")
-    parser.add_argument("--actor", default=os.getenv("GITHUB_ACTOR", ""), help="GitHub trigger actor")
+    parser.add_argument("--actor", default=os.getenv("PR_AUTHOR", ""), help="Pull request author")
 
     args = parser.parse_args()
 

@@ -60,3 +60,30 @@ def test_conventions_job_runs_safe_validation() -> None:
     assert "${{ github.event.pull_request.title }}" not in raw_conventions.replace("PR_TITLE: ${{ github.event.pull_request.title }}", ""), (
         "Unsanitized PR title must not be interpolated directly in shell commands"
     )
+
+
+def test_ci_revalidates_edited_pr_title() -> None:
+    root = Path(__file__).resolve().parents[2]
+    content = yaml.load((root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+
+    pull_request = content["on"]["pull_request"]
+    assert set(pull_request["types"]) >= {"opened", "synchronize", "reopened", "edited"}
+    validation = next(step for step in content["jobs"]["conventions"]["steps"] if step.get("name") == "Validate PR metadata")
+    env = validation["env"]
+    assert env["PR_AUTHOR"] == "${{ github.event.pull_request.user.login }}"
+    assert "GITHUB_ACTOR" not in env
+
+
+def test_ci_uses_a_uv_version_that_reads_the_checked_lockfile() -> None:
+    root = Path(__file__).resolve().parents[2]
+    content = yaml.load((root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+
+    workflows = [content, yaml.load((root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)]
+    versions = {
+        step["with"].get("version")
+        for workflow in workflows
+        for job in workflow.get("jobs", {}).values()
+        for step in job.get("steps", [])
+        if step.get("uses", "").startswith("astral-sh/setup-uv@")
+    }
+    assert versions == {"0.13.7"}

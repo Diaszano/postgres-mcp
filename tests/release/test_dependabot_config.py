@@ -35,3 +35,5 @@ def test_contributing_mentions_dependabot_review() -> None:
     assert contributing_file.is_file(), "CONTRIBUTING.md missing"
     content = contributing_file.read_text(encoding="utf-8")
     assert "dependabot" in content.lower(), "CONTRIBUTING.md must describe how dependabot PRs are managed"
+    assert "revert/" in content, "CONTRIBUTING.md must list the supported revert branch category"
+    assert "pull request titles" in content.lower(), "CONTRIBUTING.md must document Conventional Commit PR titles"

@@ -29,6 +29,7 @@ Allowed categories:
 - `perf/`: Performance optimizations
 - `refactor/`: Refactoring code without altering external behavior
 - `chore/`: Routine maintenance tasks
+- `revert/`: Reverting an earlier change
 
 Automated dependency branches created by bot tools must use `dependabot/...`.
 
@@ -53,6 +54,8 @@ Allowed types:
 - `revert`: Reverts a prior commit
 
 Breaking changes must indicate breaking impact using `!` immediately preceding the colon (e.g., `feat(api)!: remove deprecated flags`) and document the breaking change in the footer.
+
+Pull request titles must follow the same Conventional Commits format because squash merge uses the title as the resulting commit message. CI validates titles when a PR opens, receives new commits, reopens, or is edited. Dependabot branch authorization is based on the PR author, so a human editing or rerunning a bot PR does not change its author.
 
 ---
 

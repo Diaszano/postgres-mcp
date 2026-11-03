@@ -42,3 +42,21 @@ def test_release_workflow_is_reusable_only() -> None:
     assert "workflow_call" in on_events, "release.yml must support 'workflow_call'"
     assert "push" not in on_events, "release.yml must not allow independent 'push' triggers"
     assert "pull_request" not in on_events, "release.yml must not allow 'pull_request' triggers"
+
+
+def test_fork_pr_has_no_release_permissions() -> None:
+    root = Path(__file__).resolve().parents[2]
+    ci = yaml.load((root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    release = ci["jobs"]["release"]
+    assert release["if"] == "github.event_name == 'push' && github.ref == 'refs/heads/main'"
+    assert release["permissions"] == {"contents": "write", "packages": "write"}
+    for name, job in ci["jobs"].items():
+        if name != "release":
+            assert job.get("permissions", {}).get("contents") != "write", f"PR job {name} must remain read-only"
+            assert job.get("permissions", {}).get("packages") != "write", f"PR job {name} must not publish packages"
+
+    workflow = yaml.load((root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    assert workflow["permissions"] == {"contents": "read"}
+    assert workflow["jobs"]["semantic-release"]["permissions"] == {"contents": "write"}
+    assert workflow["jobs"]["build-image"]["permissions"] == {"contents": "read", "packages": "write"}
+    assert workflow["jobs"]["promote-image"]["permissions"] == {"contents": "read", "packages": "write"}
