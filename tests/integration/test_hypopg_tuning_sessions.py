@@ -46,6 +46,8 @@ async def tuning_env(hypopg_postgres: Any, monkeypatch: pytest.MonkeyPatch) -> A
         for database, table in (("app_development", "tuning_items"), ("app_testing", "tuning_events")):
             with hypopg_postgres.admin(database) as conn:
                 conn.execute(sql.SQL("DROP TABLE {}").format(sql.Identifier(table)))
+        with hypopg_postgres.admin("app_testing") as conn:
+            conn.execute("DROP EXTENSION IF EXISTS hypopg")
 
 
 class Observe:

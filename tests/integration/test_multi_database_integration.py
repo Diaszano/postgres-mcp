@@ -173,6 +173,7 @@ async def test_all_nine_tools_accept_explicit_database(env: Env):
             conn.execute(sql.SQL("GRANT USAGE ON SCHEMA {} TO {}").format(sql.Identifier(f"schema_{tag}"), sql.Identifier(ROLE)))
     with env.pg.admin("app_development") as conn:
         conn.execute("DROP EXTENSION IF EXISTS hypopg")  # deterministic: the analyze tools report it missing per database
+        conn.execute("SELECT pg_stat_statements_reset()")
     try:
         for name, tag in fingerprints.items():
             other = next(t for t in fingerprints.values() if t != tag)

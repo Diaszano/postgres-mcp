@@ -6,12 +6,12 @@ import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "build.yml"
+WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
 
 @pytest.fixture(scope="module")
 def workflow_def() -> dict:
-    """Parse .github/workflows/build.yml."""
+    """Parse .github/workflows/ci.yml."""
     assert WORKFLOW_PATH.exists(), f"Missing CI workflow file at {WORKFLOW_PATH}"
     with open(WORKFLOW_PATH, encoding="utf-8") as f:
         data = yaml.safe_load(f)

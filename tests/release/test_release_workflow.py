@@ -20,11 +20,11 @@ def test_release_workflow_structure_and_concurrency() -> None:
     on_events = wf.get("on") or wf.get(True)
     assert "workflow_call" in on_events
 
-    # Must serialize releases to avoid race conditions on tags and versions
+    # Release and recovery share this lock so neither can race alias promotion.
     concurrency = wf.get("concurrency")
     assert concurrency is not None, "release.yml must define concurrency group"
     if isinstance(concurrency, dict):
-        assert "release" in concurrency.get("group", "")
+        assert concurrency.get("group") == "image-alias-promotion"
         assert concurrency.get("cancel-in-progress") in ("false", False)
 
 
