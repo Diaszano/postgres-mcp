@@ -19,3 +19,4 @@ docs
 tests
 justfile
 README*.md
+!README.md

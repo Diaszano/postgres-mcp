@@ -202,7 +202,12 @@ def format_error_response(error: str, *, code: str = "INTERNAL_ERROR") -> ToolRe
 
     if isinstance(format_text_response, MagicMock):
         return format_text_response(f"Error: {error}")  # type: ignore
-    return error_result(PublicToolError(code, error))
+    result = error_result(PublicToolError(code, error))
+    result.structuredContent = {
+        **(result.structuredContent or {}),
+        "result": [item.model_dump(mode="json", by_alias=True) for item in result.content],
+    }
+    return result
 
 
 def format_exception_response(operation: str, exc: BaseException) -> ToolResult:

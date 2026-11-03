@@ -26,6 +26,7 @@ uv run --frozen --group dev pytest -q tests/unit
 
 - **Testes Unitários** (`tests/unit/`): Testes para componentes individuais sem dependência de Docker.
 - **Testes de Integração** (`tests/integration/`): Testes com contêiner descartável do PostgreSQL e extensão HypoPG.
+- `test_mcp_result_wire.py`: também verifica descoberta das ferramentas, SELECT e rejeição de escrita restrita por uma sessão cliente MCP.
 - **Testes de Desempenho** (`tests/performance/`): Benchmarks de memória e justiça de pool (opt-in via `--run-performance`).
 
 ## Ambiente de Integração Multi-Database e HypoPG
@@ -35,3 +36,9 @@ Os testes de integração requerem o Docker daemon em execução. A fixture `mul
 - Imagem: `postgres-hypopg:16` (ou definida via `MULTIDB_PG_IMAGE`). A suíte exige estritamente HypoPG; ausência de Docker ou da extensão resulta em falha explícita, nunca em skip silencioso.
 - Bancos: `app_development`, `app_testing`, `analytics` (visíveis) e `blocked_db` (acesso revogado para `PUBLIC` e para o role do MCP).
 - Role: `mcp_test_role` sem privilégios de superusuário nem `CREATEDB`.
+
+Para validar o contrato MCP com o PostgreSQL descartável:
+
+```bash
+uv run --frozen --group dev pytest -q tests/integration/test_mcp_result_wire.py
+```

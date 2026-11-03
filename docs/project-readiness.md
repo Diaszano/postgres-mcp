@@ -29,3 +29,24 @@ Baseline captured on 2026-11-03 from local commit `cdb81019c61a2cb1f1590e4b42af7
 - Branch protection was readable with `gh` even though the GitHub plugin returned 403 for that endpoint. The authenticated CLI reported `Branch not protected` (404).
 - GHCR inspection was attempted with `gh`; GitHub denied it for missing `read:packages` scope. No credential was changed.
 - No database connection strings, tokens, or raw command logs are included here.
+
+## Task 2 verification
+
+- The install blocker was a `pglast` 7.11 source archive missing `postgres_deparse.h`. This repository now uses `pglast==7.22` from PyPI and no longer pins the broken direct source URL. The upstream changelog documents the missing-header fix in 7.17; the project's `pglast` v7 line targets PostgreSQL 17. See [pglast changes](https://github.com/lelit/pglast/blob/v8/CHANGES.rst) and [pglast project](https://github.com/lelit/pglast).
+- `uv run ruff check .` and `uv run ruff format --check .` now run with the project environment. `uvx --from . postgres-mcp --help` succeeds.
+- `uv run pyright` now runs but exits 1 with 292 errors across 34 files. The Task 1 run could not start because dependency installation failed, so this is the first measured type-check result; determine its scope and fix the blocking causes in Task 3.
+- Wheel smoke, run from the repository root:
+
+  ```bash
+  uv build
+  wheel_test=$(mktemp -d /tmp/postgres-mcp-wheel.XXXXXX)
+  uv venv --python 3.12 "$wheel_test/venv"
+  uv pip install --python "$wheel_test/venv/bin/python" "$PWD/dist/postgres_mcp-0.3.0-py3-none-any.whl"
+  (cd "$wheel_test" && "$wheel_test/venv/bin/postgres-mcp" --help && "$wheel_test/venv/bin/python" -c 'import importlib.metadata, pathlib, postgres_mcp; print(importlib.metadata.version("postgres-mcp")); print(pathlib.Path(postgres_mcp.__file__).resolve())')
+  ```
+
+  Result: help exits 0, version is `0.3.0`, and the module path is under the temporary venv's `site-packages`.
+- The first local Docker build failed because `.dockerignore` excluded the `README.md` required by package metadata. The ignore list now re-includes `README.md`; `docker build --tag postgres-mcp:readiness --build-arg REVISION=local-readiness .` and `docker run --rm postgres-mcp:readiness --help` both exit 0. No image was pushed.
+- `bash scripts/ci/build_hypopg_image.sh 16` built and verified the disposable PostgreSQL 16 image. `uv run pytest -q tests/integration/test_mcp_result_wire.py tests/integration/test_restricted_security.py` passed 15 tests; this includes a real MCP client session against the disposable database, tool discovery, a permitted SELECT, a blocked INSERT, and an error response with no password.
+- `uv run pytest -q tests/unit/test_documentation_contract.py tests/release/test_smoke.py` passed 8 tests. `uv run pytest -q tests/unit/test_query_service.py tests/unit/sql/test_safe_sql.py tests/unit/security/test_sql_policy.py tests/unit/test_mcp_response.py tests/unit/test_error_contract.py` passed 143 tests.
+- The wire test initially exposed that FastMCP rejected the server's structured error against the inferred list output schema. `format_error_response` now includes the expected `result` content alongside its structured error; success output and tool signatures remain unchanged. The regression passed after this correction.

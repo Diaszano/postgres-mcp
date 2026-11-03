@@ -8,7 +8,7 @@ dependencies = [
     "mcp[cli]>=1.25.0,<2.0",
     "psycopg[binary]>=3.3.2",
     "humanize>=4.15.0",
-    "pglast==7.11",
+    "pglast==7.22",
     "attrs>=25.4.0",
     "psycopg-pool>=3.3.0",
     "instructor>=1.14.4",
@@ -40,9 +40,6 @@ dev = [
     "pyyaml>=6.0.2",
     "ruff==0.14.13",
 ]
-
-[tool.uv.sources]
-pglast = { url = "https://files.pythonhosted.org/packages/ce/96/533238944549d99d125c8ad46bf5898625bc6789ab95396422a56edf941c/pglast-7.11.tar.gz" }
 
 [tool.black]
 line-length = 150

@@ -5,10 +5,14 @@ import pytest
 from mcp.server.fastmcp import FastMCP
 from mcp.shared.memory import create_connected_server_and_client_session
 
+import postgres_mcp.server as app
+from postgres_mcp.database_config import parse_database_config
 from postgres_mcp.mcp_response import error_result
 from postgres_mcp.mcp_response import format_mcp_result
 from postgres_mcp.mcp_response import success_result
 from postgres_mcp.security.errors import PublicToolError
+from postgres_mcp.sql.database_catalog import DatabaseCatalog
+from postgres_mcp.sql.database_registry import DatabaseRegistry
 
 
 @pytest.mark.asyncio
@@ -67,6 +71,57 @@ async def test_unexpected_exception_is_sanitized():
         assert res.structuredContent["error"]["code"] == "INTERNAL_ERROR"
         assert "supersecret" not in res.content[0].text
         assert "supersecret" not in str(res.structuredContent)
+
+
+@pytest.mark.asyncio
+async def test_restricted_database_tools_work_over_mcp_wire(multidb_postgres, monkeypatch):
+    config = parse_database_config(
+        {
+            "DATABASE_URI": multidb_postgres.mcp_bootstrap_uri,
+            "DATABASE_AUTO_DISCOVER": "true",
+            "DATABASE_DEFAULT_DATABASE": "app_development",
+        },
+        None,
+        None,
+    )
+    registry = DatabaseRegistry(config, DatabaseCatalog(config))
+    await registry.start()
+    monkeypatch.setattr(app, "database_config", config)
+    monkeypatch.setattr(app, "registry", registry)
+    monkeypatch.setattr(app, "current_access_mode", app.AccessMode.RESTRICTED)
+
+    wire_server = FastMCP("postgres-mcp-integration")
+    wire_server.add_tool(app.list_databases)
+    wire_server.add_tool(app.execute_sql)
+    try:
+        async with create_connected_server_and_client_session(wire_server._mcp_server) as client:
+            tools = await client.list_tools()
+            assert {tool.name for tool in tools.tools} == {"list_databases", "execute_sql"}
+
+            databases = await client.call_tool("list_databases", {})
+            assert databases.isError is False
+            assert "app_development" in databases.content[0].text
+
+            select = await client.call_tool("execute_sql", {"sql": "SELECT 1 AS value"})
+            assert select.isError is False
+            assert select.structuredContent is not None
+            assert "result" in select.structuredContent
+            assert "1" in select.content[0].text
+
+            write = await client.call_tool(
+                "execute_sql",
+                {"sql": "INSERT INTO development_marker (id, label) VALUES (2, 'blocked')"},
+            )
+            assert write.isError is True
+            assert write.structuredContent is not None, write.model_dump_json()
+            assert write.structuredContent["error"]["code"] == "SQL_VALIDATION_FAILED"
+            assert write.structuredContent["result"][0]["type"] == "text"
+            assert multidb_postgres.mcp_password not in str(write.structuredContent)
+            assert multidb_postgres.mcp_password not in str(write.content)
+            with multidb_postgres.admin("app_development") as conn:
+                assert conn.execute("SELECT count(*) FROM development_marker").fetchone()[0] == 1
+    finally:
+        await registry.close_all()
 
 
 def test_sdk_compatibility_pinned():
