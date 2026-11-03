@@ -1,3 +1,4 @@
+
 import json
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
@@ -7,6 +8,7 @@ import pytest
 import pytest_asyncio
 
 import postgres_mcp.server as server
+from tests.type_helpers import text_at
 
 
 class MockCell:
@@ -51,7 +53,7 @@ async def test_explain_query_basic():
         # Verify we get the expected result
         assert isinstance(result, list)
         assert len(result) == 1
-        assert json.loads(result[0].text) == expected_output
+        assert json.loads(text_at(result)) == expected_output
 
 
 @pytest.mark.asyncio
@@ -79,7 +81,7 @@ async def test_explain_query_analyze():
         # Verify we get the expected result
         assert isinstance(result, list)
         assert len(result) == 1
-        assert json.loads(result[0].text) == expected_output
+        assert json.loads(text_at(result)) == expected_output
 
 
 @pytest.mark.asyncio
@@ -109,7 +111,7 @@ async def test_explain_query_hypothetical_indexes():
         # Verify we get the expected result
         assert isinstance(result, list)
         assert len(result) == 1
-        assert json.loads(result[0].text) == expected_output
+        assert json.loads(text_at(result)) == expected_output
 
 
 @pytest.mark.asyncio
@@ -128,4 +130,4 @@ async def test_explain_query_error_handling():
         # Verify error is formatted correctly
         assert isinstance(result, list)
         assert len(result) == 1
-        assert error_message in result[0].text
+        assert error_message in text_at(result)

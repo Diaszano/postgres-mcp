@@ -1,4 +1,5 @@
 import logging
+from unittest.mock import AsyncMock
 
 import pytest
 from psycopg import OperationalError
@@ -34,7 +35,7 @@ def test_expected_errors_preserve_safe_code():
     assert to_public_error(DiscoveryUnavailableError("secret URI")).code == "DATABASE_UNAVAILABLE"
     assert to_public_error(DatabaseNotAllowedError("secret database")).code == "DATABASE_NOT_ALLOWED"
     with pytest.raises(ValueError) as exc:
-        SafeSqlDriver(None).validate("SELECT pg_sleep('secret SQL')")
+        SafeSqlDriver(AsyncMock()).validate("SELECT pg_sleep('secret SQL')")
     error = to_public_error(exc.value)
     assert error.code == "SQL_VALIDATION_FAILED"
     assert "secret SQL" not in str(error)

@@ -99,7 +99,8 @@ async def test_execution_timeout_releases_permit_and_resets_deadline():
     assert remaining_query_seconds() is None
 
     async def later():
-        assert 0 < remaining_query_seconds() <= 1
+        remaining = remaining_query_seconds()
+        assert remaining is not None and 0 < remaining <= 1
         return "available"
 
     assert await admission.run(later, 1) == "available"

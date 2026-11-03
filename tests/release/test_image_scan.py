@@ -4,6 +4,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import yaml
+
 
 def test_scan_script_structure() -> None:
     root = Path(__file__).resolve().parents[2]
@@ -32,3 +34,18 @@ def test_scan_script_fails_on_missing_or_invalid_image() -> None:
     res_no_digest = subprocess.run([str(script_path), "ghcr.io/diaszano/postgres-mcp:latest"], capture_output=True, text=True)
     assert res_no_digest.returncode != 0, "Script must require immutable @sha256: digest"
     assert "sha256" in res_no_digest.stderr.lower() or "digest" in res_no_digest.stderr.lower()
+
+
+def test_promotion_workflows_install_a_pinned_trivy_cli() -> None:
+    root = Path(__file__).resolve().parents[2]
+    for workflow_name, job_name in [("release.yml", "promote-image"), ("retry-publish.yml", "republish-image")]:
+        workflow = yaml.load((root / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+        steps = workflow["jobs"][job_name]["steps"]
+        setup = next(step for step in steps if step.get("name") == "Install Trivy")
+        assert setup["uses"] == "aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567"
+        assert setup["with"]["version"] == "v0.76.1"
+
+    security = yaml.load((root / ".github" / "workflows" / "security.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    scan = next(step for step in security["jobs"]["repo-scan"]["steps"] if step.get("name") == "Run Trivy Repository Scan")
+    assert scan["uses"] == "aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1"
+    assert scan["with"]["version"] == "v0.76.1"

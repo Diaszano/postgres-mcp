@@ -1,3 +1,5 @@
+# pyright: reportPrivateUsage=false
+
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -10,6 +12,7 @@ from postgres_mcp.server import analyze_db_health
 from postgres_mcp.server import execute_sql
 from postgres_mcp.server import mcp
 from postgres_mcp.sql.database_registry import PoolCapacityError
+from tests.type_helpers import text_at
 
 
 @pytest.mark.asyncio
@@ -23,10 +26,11 @@ async def test_execute_sql_safe_error_on_wire():
         assert isinstance(res, types.CallToolResult)
         assert res.isError is True
         assert res.structuredContent is not None
+        assert res.structuredContent is not None
         assert res.structuredContent["error"]["code"] == "SQL_VALIDATION_FAILED"
         assert len(res.content) >= 1
-        assert "Unsafe command" not in res.content[0].text
-        assert "The SQL statement is not allowed." in res.content[0].text
+        assert "Unsafe command" not in text_at(res.content)
+        assert "The SQL statement is not allowed." in text_at(res.content)
 
 
 def test_existing_read_only_annotations():
@@ -64,7 +68,7 @@ async def test_legacy_text_fallback():
         res = await execute_sql("SELECT 123 as col")
         assert len(res) >= 1
         assert isinstance(res[0], types.TextContent)
-        assert "123" in res[0].text
+        assert "123" in text_at(res)
 
 
 @pytest.mark.asyncio
@@ -74,6 +78,7 @@ async def test_expected_health_errors():
         res = await analyze_db_health("all")
         assert isinstance(res, types.CallToolResult)
         assert res.isError is True
+        assert res.structuredContent is not None
         assert res.structuredContent["error"]["code"] == "POOL_CAPACITY_EXCEEDED"
 
     with patch("postgres_mcp.server.get_sql_driver") as mock_get:
@@ -81,5 +86,6 @@ async def test_expected_health_errors():
         res = await analyze_db_health("all")
         assert isinstance(res, types.CallToolResult)
         assert res.isError is True
+        assert res.structuredContent is not None
         assert res.structuredContent["error"]["code"] == "INTERNAL_ERROR"
-        assert "secret" not in res.content[0].text
+        assert "secret" not in text_at(res.content)

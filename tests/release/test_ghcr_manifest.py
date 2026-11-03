@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import yaml
 
 
-def _load_release_workflow() -> dict:
+def _load_release_workflow() -> dict[str, Any]:
     root = Path(__file__).resolve().parents[2]
     path = root / ".github" / "workflows" / "release.yml"
     assert path.is_file(), ".github/workflows/release.yml missing"
@@ -60,3 +61,15 @@ def test_dockerfile_oci_labels() -> None:
     assert "https://github.com/diaszano/postgres-mcp" in dockerfile
     assert "org.opencontainers.image.source" in dockerfile
     assert "org.opencontainers.image.revision" in dockerfile
+    assert 'org.opencontainers.image.version="${VERSION}"' in dockerfile
+
+
+def test_image_builds_stamp_the_release_version() -> None:
+    for workflow_name, job_name, expression in [
+        ("release.yml", "build-image", "${{ needs.semantic-release.outputs.version }}"),
+        ("retry-publish.yml", "republish-image", "${{ needs.validate-ref.outputs.version }}"),
+    ]:
+        root = Path(__file__).resolve().parents[2]
+        workflow = yaml.load((root / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+        build = next(step for step in workflow["jobs"][job_name]["steps"] if "build-push-action" in step.get("uses", ""))
+        assert f"VERSION={expression}" in build["with"]["build-args"]

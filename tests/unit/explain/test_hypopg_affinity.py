@@ -1,8 +1,11 @@
+
 import asyncio
 from contextlib import asynccontextmanager
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
+from psycopg_pool import AsyncConnectionPool
 
 import postgres_mcp.server as server
 from postgres_mcp.database_config import parse_database_config
@@ -12,6 +15,7 @@ from postgres_mcp.sql import SafeSqlDriver
 from postgres_mcp.sql import SqlDriver
 from postgres_mcp.sql.database_session import database_session
 from postgres_mcp.sql.sql_driver import DbConnPool
+from tests.type_helpers import text_at
 
 PLAN = {
     "Plan": {
@@ -95,8 +99,8 @@ class Pool(DbConnPool):
         self.backend = Connection()
         self.checkouts = 0
 
-    async def pool_connect(self):
-        return self
+    async def pool_connect(self, connection_url: str | None = None) -> AsyncConnectionPool:
+        return cast(AsyncConnectionPool, self)
 
     @asynccontextmanager
     async def connection(self):
@@ -111,7 +115,7 @@ class Pool(DbConnPool):
 def pool(monkeypatch):
     pool = Pool()
     monkeypatch.setattr(server, "db_connection", pool)
-    monkeypatch.setattr(server, "database_config", parse_database_config({"DATABASE_URI": pool.connection_url}, None, None))
+    monkeypatch.setattr(server, "database_config", parse_database_config({"DATABASE_URI": pool.connection_url or ""}, None, None))
     monkeypatch.setattr(server, "registry", None)
     monkeypatch.setattr(server, "current_access_mode", server.AccessMode.UNRESTRICTED)
     return pool
@@ -129,7 +133,7 @@ async def test_explain_hypopg_uses_one_bound_driver(pool, monkeypatch):
     monkeypatch.setattr(SqlDriver, "execute_query", record)
     result = await server.explain_query("SELECT * FROM users", analyze=False, hypothetical_indexes=INDEXES, database="app")
 
-    assert "Index Scan" in result[0].text
+    assert "Index Scan" in text_at(result)
     assert pool.checkouts == 1
     assert pool.backend.events == ["reset", "create", "explain", "reset", "rollback", "release"]
     assert all(driver is calls[0][0] and connection is pool.backend for driver, connection, _ in calls)
@@ -153,7 +157,7 @@ async def test_reset_runs_in_finally(pool):
 async def test_analyze_hypopg_combination_remains_rejected(pool):
     result = await server.explain_query("SELECT * FROM users", analyze=True, hypothetical_indexes=INDEXES)
 
-    assert "Cannot use analyze and hypothetical indexes together" in result[0].text
+    assert "Cannot use analyze and hypothetical indexes together" in text_at(result)
     assert pool.checkouts == 0
 
 
@@ -185,8 +189,8 @@ async def test_failed_reset_returns_sanitized_error(pool, monkeypatch, restricte
 
     result = await server.explain_query("SELECT * FROM users", analyze=False, hypothetical_indexes=INDEXES)
 
-    assert result[0].text.startswith("Error:")
-    assert "private database details" not in result[0].text
+    assert text_at(result).startswith("Error:")
+    assert "private database details" not in text_at(result)
     assert pool.backend.closed
     assert pool.backend.events[-2:] == ["close", "release"]
 
@@ -206,7 +210,7 @@ async def test_restricted_hypopg_preserves_safe_driver_validation(pool, monkeypa
     monkeypatch.setattr("postgres_mcp.sql.safe_sql.validate_restricted_function_resolution", runtime_guard)
     result = await server.explain_query("SELECT * FROM users", analyze=False, hypothetical_indexes=INDEXES)
 
-    assert "Index Scan" in result[0].text
+    assert "Index Scan" in text_at(result)
     assert validated[0] == "SELECT * FROM users"
     assert any(query.startswith("EXPLAIN") for query in validated)
     assert runtime_guard.await_count == 5
@@ -219,5 +223,5 @@ async def test_restricted_hypopg_rejects_user_sql_before_extension_queries(pool,
     monkeypatch.setattr(server, "current_access_mode", server.AccessMode.RESTRICTED)
     result = await server.explain_query("DELETE FROM users", analyze=False, hypothetical_indexes=INDEXES)
 
-    assert result[0].text.startswith("Error:")
+    assert text_at(result).startswith("Error:")
     assert not any("hypopg" in query or "pg_extension" in query or "EXPLAIN" in query for query in pool.backend.commands)

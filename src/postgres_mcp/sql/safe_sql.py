@@ -859,7 +859,7 @@ class SafeSqlDriver(SqlDriver):
         self.timeout = timeout
 
     @classmethod
-    def _validate_node(cls, node: Node) -> None:
+    def validate_node(cls, node: Node) -> None:
         """Recursively validate a node and all its children"""
         # Check if node type is allowed
         if not isinstance(node, tuple(cls.ALLOWED_NODE_TYPES)):
@@ -879,17 +879,22 @@ class SafeSqlDriver(SqlDriver):
 
         # Validate function calls
         if isinstance(node, FuncCall):
-            parts = tuple(part.sval for part in node.funcname)
-            if not parts or (len(parts) > 1 and parts[:-1] != ("pg_catalog",)):
+            function_parts = node.funcname
+            parts = [part.sval for part in function_parts] if isinstance(function_parts, tuple) else []
+            if not parts or (len(parts) > 1 and parts[:-1] != ["pg_catalog"]):
                 raise ValueError("Untrusted function schema is not allowed")
             if parts[-1] not in cls.ALLOWED_FUNCTIONS:
                 raise ValueError("Function is not allowed")
 
-        if isinstance(node, A_Expr) and node.name and len(node.name) > 1 and node.name[0].sval != "pg_catalog":
-            raise ValueError("Untrusted operator schema is not allowed")
+        if isinstance(node, A_Expr):
+            operator_parts = node.name
+            if isinstance(operator_parts, tuple) and len(operator_parts) > 1 and operator_parts[0].sval != "pg_catalog":
+                raise ValueError("Untrusted operator schema is not allowed")
 
-        if isinstance(node, TypeName) and len(node.names) > 1 and tuple(part.sval for part in node.names[:-1]) != ("pg_catalog",):
-            raise ValueError("Untrusted type schema is not allowed")
+        if isinstance(node, TypeName):
+            type_parts = node.names
+            if isinstance(type_parts, tuple) and len(type_parts) > 1 and tuple(part.sval for part in type_parts[:-1]) != ("pg_catalog",):
+                raise ValueError("Untrusted type schema is not allowed")
 
         # Reject SELECT statements with locking clauses
         if isinstance(node, SelectStmt) and getattr(node, "lockingClause", None):
@@ -932,7 +937,7 @@ class SafeSqlDriver(SqlDriver):
         descent, functions called in FROM / LATERAL / ROWS FROM would skip the allowlist.
         """
         if isinstance(attr, Node):
-            cls._validate_node(attr)
+            cls.validate_node(attr)
         elif isinstance(attr, (list, tuple)):
             for item in attr:
                 cls._validate_children(item)
@@ -1032,7 +1037,7 @@ def validate_restricted_sql(sql: str) -> None:
             node = statement.stmt if isinstance(statement, RawStmt) else statement
             if not isinstance(node, tuple(SafeSqlDriver.ALLOWED_STMT_TYPES)):
                 raise ValueError("Only SELECT, EXPLAIN SELECT and SHOW are allowed")
-            SafeSqlDriver._validate_node(statement)
+            SafeSqlDriver.validate_node(statement)
     except ValueError as exc:
         raise SQLValidationError("Error validating query: statement is not allowed") from exc
 
@@ -1058,13 +1063,14 @@ async def validate_restricted_function_resolution(cursor: Any, query: str) -> No
     types: set[str] = set()
 
     def visit(value: Any) -> None:
-        if isinstance(value, FuncCall) and len(value.funcname) == 1:
+        if isinstance(value, FuncCall) and isinstance(value.funcname, tuple) and len(value.funcname) == 1:
             names.add(value.funcname[0].sval)
-        if isinstance(value, A_Expr) and value.name and len(value.name) == 1:
+        if isinstance(value, A_Expr) and isinstance(value.name, tuple) and len(value.name) == 1:
             operators.add(value.name[0].sval)
         if isinstance(value, TypeName):
-            parts = tuple(part.sval for part in value.names)
-            if not parts or (len(parts) > 1 and parts[:-1] != ("pg_catalog",)):
+            type_parts = value.names
+            parts = [part.sval for part in type_parts] if isinstance(type_parts, tuple) else []
+            if not parts or (len(parts) > 1 and parts[:-1] != ["pg_catalog"]):
                 raise SQLValidationError("Error validating query: untrusted type resolution")
             types.add(parts[-1])
         if isinstance(value, Node):

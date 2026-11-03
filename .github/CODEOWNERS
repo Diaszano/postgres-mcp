@@ -1,4 +1,5 @@
-# Global ownership fallback
+# Ownership and reviewer routing only; branch rules do not require self-approval.
+# Revisit approval requirements if a second independent maintainer is added.
 * @Diaszano
 
 # Critical CI/CD workflows and release automation

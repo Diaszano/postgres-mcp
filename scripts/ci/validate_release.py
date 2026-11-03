@@ -72,6 +72,16 @@ def calculate_next_version(current_version: str, commit_messages: list[str], maj
     return None
 
 
+def compare_release_versions(left: str, right: str) -> int:
+    """Compare two stable X.Y.Z versions numerically, returning -1, 0, or 1."""
+    if not STRICT_RELEASE_TAG_REGEX.fullmatch(f"v{left}") or not STRICT_RELEASE_TAG_REGEX.fullmatch(f"v{right}"):
+        raise ValueError(f"Expected stable X.Y.Z versions, got {left!r} and {right!r}")
+
+    left_parts = tuple(int(part) for part in left.split("."))
+    right_parts = tuple(int(part) for part in right.split("."))
+    return (left_parts > right_parts) - (left_parts < right_parts)
+
+
 def validate_release_baseline(project_version: str, reachable_tags: list[str]) -> None:
     """Validate git reachable tags against project version to ensure idempotent bootstrap."""
     if len(reachable_tags) != len(set(reachable_tags)):

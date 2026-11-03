@@ -14,6 +14,8 @@ def test_codeowners_protects_critical_paths() -> None:
     assert ".github/workflows/" in content, ".github/workflows/ must have owner assignment"
     assert "scripts/ci/" in content, "scripts/ci/ must have owner assignment"
     assert "pyproject.toml" in content, "pyproject.toml must have owner assignment"
+    assert "ownership and reviewer routing only" in content.lower()
+    assert "do not require self-approval" in content.lower()
 
 
 def test_upstream_credit_preserved() -> None:
@@ -45,13 +47,14 @@ def test_contributing_defines_conventions_and_merge_policy() -> None:
     assert "TDD" in content or "test" in content.lower(), "Must require testing"
 
 
-def test_readme_ghcr_commands_match_image() -> None:
+def test_readme_docker_commands_build_the_local_image() -> None:
     root = Path(__file__).resolve().parents[2]
     readme_en = (root / "README.md").read_text(encoding="utf-8")
     readme_pt = (root / "README.pt-BR.md").read_text(encoding="utf-8")
 
     for readme, lang in [(readme_en, "README.md"), (readme_pt, "README.pt-BR.md")]:
-        assert "ghcr.io/diaszano/postgres-mcp" in readme, f"{lang} must reference ghcr.io/diaszano/postgres-mcp"
+        assert "docker build -t postgres-mcp:latest ." in readme, f"{lang} must document building the local image"
+        assert "ghcr.io/diaszano/postgres-mcp" not in readme, f"{lang} must not present an unverified GHCR image"
         assert "docker pull crystaldba/postgres-mcp" not in readme, f"{lang} must not reference docker pull crystaldba/postgres-mcp"
 
 
@@ -71,3 +74,12 @@ def test_justfile_has_no_manual_release() -> None:
     # Only automated CI releases are allowed, no local manual release recipe
     lines = [line.strip() for line in justfile.splitlines()]
     assert "release:" not in lines, "justfile must not have a manual 'release:' target"
+
+
+def test_pull_request_template_matches_required_ci_gate() -> None:
+    root = Path(__file__).resolve().parents[2]
+    content = (root / ".github" / "PULL_REQUEST_TEMPLATE.md").read_text(encoding="utf-8")
+
+    assert "Required CI checks pass" in content
+    assert "PostgreSQL 16 and 17" in content
+    assert "all unit, integration, and release test suites pass locally" not in content

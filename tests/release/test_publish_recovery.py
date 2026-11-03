@@ -50,3 +50,25 @@ def test_retry_workflow_is_manual_only() -> None:
     assert "pull_request" not in on_events
     assert "push" not in on_events
     assert "semantic-release version" not in raw_content
+
+
+def test_retry_tag_is_passed_via_environment_after_checkout() -> None:
+    root = Path(__file__).resolve().parents[2]
+    workflow = yaml.load((root / ".github" / "workflows" / "retry-publish.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    validation = next(step for step in workflow["jobs"]["validate-ref"]["steps"] if step.get("name") == "Validate tag reference")
+
+    assert validation["env"]["TAG"] == "${{ inputs.tag }}"
+    assert 'validate_release_ref.py --tag "$TAG"' in validation["run"]
+    assert "${{ inputs.tag }}" not in validation["run"]
+    assert 'git rev-parse "refs/tags/${TAG}^{commit}"' in validation["run"]
+    assert '"$TAG_SHA" != "$COMMIT_SHA"' in validation["run"]
+
+
+def test_release_and_recovery_serialize_alias_promotion() -> None:
+    root = Path(__file__).resolve().parents[2]
+    recovery = yaml.load((root / ".github" / "workflows" / "retry-publish.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    release = yaml.load((root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+
+    assert recovery["concurrency"]["group"] == release["concurrency"]["group"]
+    assert recovery["concurrency"]["cancel-in-progress"] == "false"
+    assert release["concurrency"]["cancel-in-progress"] == "false"

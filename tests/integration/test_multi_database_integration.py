@@ -17,6 +17,7 @@ from postgres_mcp.sql import reset_postgres_version_cache
 from postgres_mcp.sql.database_catalog import DatabaseCatalog
 from postgres_mcp.sql.database_catalog import discover_postgres_databases
 from postgres_mcp.sql.database_registry import DatabaseRegistry
+from tests.type_helpers import text_at
 
 pytestmark = pytest.mark.asyncio
 
@@ -80,7 +81,7 @@ async def env(multidb_postgres: Any, monkeypatch: pytest.MonkeyPatch) -> AsyncIt
 
 
 def _text(response: Any) -> str:
-    return response[0].text
+    return text_at(response)
 
 
 def _rows(response: Any) -> list[dict[str, Any]]:
@@ -173,6 +174,7 @@ async def test_all_nine_tools_accept_explicit_database(env: Env):
             conn.execute(sql.SQL("GRANT USAGE ON SCHEMA {} TO {}").format(sql.Identifier(f"schema_{tag}"), sql.Identifier(ROLE)))
     with env.pg.admin("app_development") as conn:
         conn.execute("DROP EXTENSION IF EXISTS hypopg")  # deterministic: the analyze tools report it missing per database
+        conn.execute("SELECT pg_stat_statements_reset()")
     try:
         for name, tag in fingerprints.items():
             other = next(t for t in fingerprints.values() if t != tag)

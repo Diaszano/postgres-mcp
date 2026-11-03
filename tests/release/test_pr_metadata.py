@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -59,6 +60,20 @@ def test_cli_execution_with_flags(tmp_path: Path) -> None:
     )
     assert res_fail.returncode != 0
     assert "Conventional Commits" in res_fail.stderr or "Conventional Commits" in res_fail.stdout
+
+
+def test_dependabot_pr_author_survives_human_title_edit_rerun() -> None:
+    script_path = Path(__file__).resolve().parents[2] / "scripts" / "ci" / "check_pr_metadata.py"
+    env = {
+        **os.environ,
+        "PR_TITLE": "chore(deps): bump ruff",
+        "PR_HEAD_REF": "dependabot/uv/ruff-1.0",
+        "PR_AUTHOR": "dependabot[bot]",
+        "GITHUB_ACTOR": "human-maintainer",
+    }
+
+    res = subprocess.run([sys.executable, str(script_path)], capture_output=True, text=True, env=env)
+    assert res.returncode == 0, res.stderr
 
 
 def test_pr_and_issue_templates_exist() -> None:

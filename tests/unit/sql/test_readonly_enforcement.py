@@ -1,3 +1,4 @@
+
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -8,6 +9,7 @@ from postgres_mcp.server import AccessMode
 from postgres_mcp.server import get_sql_driver
 from postgres_mcp.sql import SafeSqlDriver
 from postgres_mcp.sql import SqlDriver
+from tests.type_helpers import text_at
 
 
 @pytest.mark.asyncio
@@ -146,7 +148,7 @@ async def test_restricted_denies_dml_and_multiple_statements(restricted_discover
         await explain_query(sql, False, [{"table": "isolated_marker", "columns": ["id"]}], database=database),
     ]
     for result in results:
-        assert result[0].text.startswith("Error: ") and "Cannot use analyze" not in result[0].text
+        assert text_at(result).startswith("Error: ") and "Cannot use analyze" not in text_at(result)
     restricted_discovery.assert_not_called()  # writes_executed == 0: nothing reached the connection
 
 
@@ -164,7 +166,7 @@ DANGEROUS = [
 @pytest.mark.asyncio
 async def test_restricted_explain_analyze_rejects_dangerous_sql(restricted_discovery, database, sql):
     result = await explain_query(sql, True, [], database=database)
-    assert "Error:" in result[0].text
+    assert "Error:" in text_at(result)
     restricted_discovery.assert_not_called()  # rejected before any query, even the bind-parameter lookups
 
 
@@ -188,7 +190,7 @@ async def test_restricted_denies_function_in_from_clause(restricted_discovery, d
         await explain_query(sql, False, [], database=database),
         await explain_query(sql, True, [], database=database),
     ):
-        assert "Error:" in result[0].text
+        assert "Error:" in text_at(result)
     restricted_discovery.assert_not_called()
 
 
@@ -197,5 +199,5 @@ async def test_restricted_denies_function_in_from_clause(restricted_discovery, d
 async def test_restricted_allows_allowlisted_function_in_from_clause(restricted_discovery, database):
     restricted_discovery.return_value = [SqlDriver.RowResult(cells={"generate_series": 1})]
     result = await execute_sql(sql="SELECT * FROM generate_series(1,3)", database=database)
-    assert "Error:" not in result[0].text
+    assert "Error:" not in text_at(result)
     restricted_discovery.assert_called_once()

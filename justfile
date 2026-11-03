@@ -5,6 +5,9 @@ set fallback
 default:
   just --list
 
+lock-check:
+  uv lock --check
+
 lint:
   uv run ruff check .
   uv run ruff format --check .
@@ -13,7 +16,7 @@ typecheck:
   uv run pyright
 
 test-unit:
-  uv run pytest -q tests/unit
+  uv run pytest -q tests/unit tests/release
 
 test-integration:
   uv run pytest -q tests/integration

@@ -5,10 +5,10 @@
 <img src="assets/postgres-mcp-pro.png" alt="Postgres MCP Pro Logo" width="600"/>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![PyPI - Version](https://img.shields.io/pypi/v/postgres-mcp)](https://pypi.org/project/postgres-mcp/)
+[![Versão do PyPI upstream](https://img.shields.io/pypi/v/postgres-mcp)](https://pypi.org/project/postgres-mcp/)
 [![Discord](https://img.shields.io/discord/1336769798603931789?label=Discord)](https://discord.gg/4BEHC7ZM)
 [![Twitter Follow](https://img.shields.io/twitter/follow/auto_dba?style=flat)](https://x.com/auto_dba)
-[![Contributors](https://img.shields.io/github/contributors/crystaldba/postgres-mcp)](https://github.com/crystaldba/postgres-mcp/graphs/contributors)
+[![Contribuidores upstream](https://img.shields.io/github/contributors/crystaldba/postgres-mcp)](https://github.com/crystaldba/postgres-mcp/graphs/contributors)
 
 <h3>Um servidor MCP para Postgres com ajuste de índices, planos de execução, verificações de saúde e execução segura de SQL.</h3>
 
@@ -28,6 +28,8 @@
 ## Visão geral
 
 **Postgres MCP Pro** é um servidor open source de Model Context Protocol (MCP) criado para apoiar você e seus agentes de IA durante **todo o processo de desenvolvimento**, desde a codificação inicial, passando por testes e implantação, até o ajuste e a manutenção em produção.
+
+Este repositório é o fork Diaszano de [crystaldba/postgres-mcp](https://github.com/crystaldba/postgres-mcp). Os indicadores do PyPI e de contribuidores acima são do projeto upstream; eles não identificam uma publicação deste fork.
 
 O Postgres MCP Pro faz muito mais do que encapsular uma conexão com o banco de dados.
 
@@ -84,30 +86,31 @@ No entanto, muitas vezes faz sentido usar o método com o qual você está mais 
 
 ### Instalação
 
-Escolha um dos métodos a seguir para instalar o Postgres MCP Pro:
+Escolha um dos métodos a seguir para instalar este fork. O pacote `postgres-mcp` no PyPI é o upstream; os comandos Python abaixo instalam do repositório Diaszano. Não foi possível verificar uma imagem GHCR deste fork, então construa a imagem Docker localmente.
 
 #### Opção 1: usando Docker
 
-Baixe a imagem Docker do servidor MCP Postgres MCP Pro via GitHub Container Registry:
-Essa imagem contém todas as dependências necessárias, oferecendo uma forma confiável de executar o Postgres MCP Pro em diversos ambientes.
+Clone este repositório e construa sua imagem Docker:
 
 ```bash
-docker pull ghcr.io/diaszano/postgres-mcp:latest
+git clone https://github.com/Diaszano/postgres-mcp.git
+cd postgres-mcp
+docker build -t postgres-mcp:latest .
 ```
 
 
 #### Opção 2: usando Python
 
-Se você tem o `pipx` instalado, pode instalar o Postgres MCP Pro com:
+Com `pipx`, instale diretamente deste fork:
 
 ```bash
-pipx install postgres-mcp
+pipx install 'git+https://github.com/Diaszano/postgres-mcp.git'
 ```
 
-Caso contrário, instale o Postgres MCP Pro com `uv`:
+Ou instale com `uv`:
 
 ```bash
-uv pip install postgres-mcp
+uv tool install git+https://github.com/Diaszano/postgres-mcp.git
 ```
 
 Se precisar instalar o `uv`, consulte as [instruções de instalação do uv](https://docs.astral.sh/uv/getting-started/installation/).
@@ -144,7 +147,7 @@ Agora você vai editar a seção `mcpServers` do arquivo de configuração.
         "DATABASE_URI",
         "-e",
         "DATABASE_DOCKER_REMAP_LOCALHOST",
-        "ghcr.io/diaszano/postgres-mcp:latest",
+        "postgres-mcp:latest",
         "--access-mode=unrestricted"
       ],
       "env": {
@@ -166,6 +169,8 @@ O remapeamento do host Docker fica desativado por padrão. Defina `DATABASE_DOCK
     "postgres": {
       "command": "uvx",
       "args": [
+        "--from",
+        "git+https://github.com/Diaszano/postgres-mcp.git",
         "postgres-mcp",
         "--access-mode=unrestricted"
       ],
@@ -205,7 +210,10 @@ O remapeamento do host Docker fica desativado por padrão. Defina `DATABASE_DOCK
     "postgres": {
       "command": "uv",
       "args": [
+        "tool",
         "run",
+        "--from",
+        "git+https://github.com/Diaszano/postgres-mcp.git",
         "postgres-mcp",
         "--access-mode=unrestricted"
       ],
@@ -250,7 +258,7 @@ Para um cliente local, execute o servidor na mesma máquina:
 
 ```bash
 DATABASE_URI='postgresql://username:password@localhost:5432/dbname' \
-  uvx postgres-mcp --access-mode=restricted --transport=sse
+  uvx --from git+https://github.com/Diaszano/postgres-mcp.git postgres-mcp --access-mode=restricted --transport=sse
 ```
 
 Em seguida, atualize a configuração do seu cliente MCP para chamar o servidor MCP.
@@ -296,7 +304,7 @@ Configure o segredo no armazenamento de segredos ou no ambiente do serviço e ex
 export MCP_HTTP_ALLOWED_HOSTS='mcp.example.com'
 export MCP_HTTP_ALLOWED_ORIGINS='https://client.example.com'
 # MCP_HTTP_AUTH_TOKEN e DATABASE_URI são fornecidos com segurança pelo ambiente do serviço.
-uvx postgres-mcp --access-mode=restricted --transport=streamable-http
+uvx --from git+https://github.com/Diaszano/postgres-mcp.git postgres-mcp --access-mode=restricted --transport=streamable-http
 ```
 
 Use `/mcp` para Streamable HTTP ou `--transport=sse` com `/sse` e `/messages/` para SSE. Os clientes devem enviar `Authorization: Bearer <segredo>` em todas as requisições HTTP, inclusive nos POSTs de mensagens SSE. Requisições anônimas ou com token inválido recebem 401. Requisições autenticadas com Host não permitido recebem 421; com Origin não permitido, recebem 403. Clientes nativos podem omitir Origin. O SDK MCP disponibiliza a identidade estável `configured-http-client`; todos os portadores do segredo compartilham o mesmo acesso ao banco. Trata-se de uma credencial bearer previamente provisionada, sem login OAuth nem serviço de autorização por usuário. Para rotacioná-la, altere o segredo e reinicie o processo.
@@ -315,7 +323,7 @@ Toda ferramenta aceita um argumento opcional `database`; quando ele é omitido, 
 ### Modo legado (padrão)
 
 ```bash
-DATABASE_URI='postgresql://user:password@localhost:5432/app_development' uvx postgres-mcp
+DATABASE_URI='postgresql://user:password@localhost:5432/app_development' uvx --from git+https://github.com/Diaszano/postgres-mcp.git postgres-mcp
 ```
 
 - Um pool de conexões, para o banco de dados da URI (uma URI passada como argumento de linha de comando continua funcionando).
@@ -333,7 +341,7 @@ DATABASE_DEFAULT_DATABASE=app_development
 DATABASE_ALLOWED_DATABASES=app_development,app_testing,analytics
 DATABASE_EXCLUDED_DATABASES=postgres
 
-uvx postgres-mcp
+uvx --from git+https://github.com/Diaszano/postgres-mcp.git postgres-mcp
 ```
 
 | Variável | Padrão | Significado |
@@ -802,15 +810,14 @@ As instruções abaixo são para desenvolvedores que querem trabalhar no Postgre
 2. **Clone o repositório**:
 
    ```bash
-   git clone https://github.com/crystaldba/postgres-mcp.git
+   git clone https://github.com/Diaszano/postgres-mcp.git
    cd postgres-mcp
    ```
 
 3. **Instale as dependências**:
 
    ```bash
-   uv pip install -e .
-   uv sync
+   uv sync --group dev
    ```
 
 4. **Execute o servidor**:

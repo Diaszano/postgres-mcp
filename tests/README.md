@@ -30,6 +30,7 @@ uv run --frozen --group dev pytest tests/unit/test_db_conn_pool.py::test_pool_co
   - `test_sql_driver.py`: Tests for SQL driver and transaction handling
   - `test_database_config.py`, `test_access_mode.py`, `test_transport.py`: Multi-database configuration, access mode defaults and transports
   - `test_multidb_server.py`: Multi-database routing, `list_databases`, restricted mode, per-database extension checks and the MCP tool contract (nine tools plus `list_databases`, optional `database`, annotations, legacy defaults)
+- `tests/integration/test_mcp_result_wire.py` also runs the live tool discovery, SELECT and restricted-write checks over an MCP client session.
 
 ## Multi-database integration environment
 

@@ -29,6 +29,7 @@ Allowed categories:
 - `perf/`: Performance optimizations
 - `refactor/`: Refactoring code without altering external behavior
 - `chore/`: Routine maintenance tasks
+- `revert/`: Reverting an earlier change
 
 Automated dependency branches created by bot tools must use `dependabot/...`.
 
@@ -54,17 +55,24 @@ Allowed types:
 
 Breaking changes must indicate breaking impact using `!` immediately preceding the colon (e.g., `feat(api)!: remove deprecated flags`) and document the breaking change in the footer.
 
+Pull request titles must follow the same Conventional Commits format because squash merge uses the title as the resulting commit message. CI validates titles when a PR opens, receives new commits, reopens, or is edited. Dependabot branch authorization is based on the PR author, so a human editing or rerunning a bot PR does not change its author.
+
 ---
 
 ## 4. Pull Request & Merge Policy
 
 1. **Pull Request Template**: Fill out all sections in the pull request template.
-2. **Automated Verification**: Ensure all tests, linters, and type checks pass locally:
+2. **Automated Verification**: Match CI's required lock, lint, type, unit/release, and package checks locally:
    ```bash
-   uv run pytest -q tests/unit tests/release
+   uv lock --check
    uv run ruff check .
    uv run ruff format --check .
+   uv run pyright
+   uv run pytest -q tests/unit tests/release
+   uv run python scripts/ci/check_version.py
+   uv build
    ```
+   The `just lock-check`, `just lint`, `just typecheck`, `just test-unit`, and `just build` recipes provide the matching shortcuts. CI runs PostgreSQL integration tests separately with its PG16/17 matrix; see [CI/CD](docs/ci-cd.md) for that Docker-backed command.
 3. **Squash Merge Strategy**: All pull requests are integrated into `main` using **Squash and Merge**. This ensures that each feature or fix represents a clean, atomic commit with semantic history on the mainline.
 4. **Code Ownership & Review**: Critical paths (`.github/workflows/`, `scripts/ci/`, `pyproject.toml`) require approval from maintainers designated in [`.github/CODEOWNERS`](.github/CODEOWNERS).
 
