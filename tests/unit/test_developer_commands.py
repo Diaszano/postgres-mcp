@@ -18,9 +18,10 @@ def test_just_commands_reference_real_package():
     assert "crystaldba" not in content, "Obsolete 'crystaldba' package path must be removed from justfile"
 
     # Required developer recipes
-    required_recipes = ["lint", "typecheck", "test-unit", "test-integration", "build"]
+    required_recipes = ["lock-check", "lint", "typecheck", "test-unit", "test-integration", "build"]
     for recipe in required_recipes:
         assert f"{recipe}:" in content or f"\n{recipe}" in content, f"Recipe '{recipe}' must be declared in justfile"
+    assert "uv run pytest -q tests/unit tests/release" in content, "test-unit must include the release suite run by CI"
 
     # If `just` binary is available, test `just --list` execution
     if shutil.which("just"):
@@ -36,7 +37,7 @@ def test_just_commands_reference_real_package():
 
 
 def test_lock_matches_pyproject():
-    """Verify uv lock --check passes and locks pglast==7.11 without unreviewed bump."""
+    """Verify the lockfile's pglast version matches the declared dependency."""
     res = subprocess.run(
         ["uv", "lock", "--check"],
         cwd=REPO_ROOT,
@@ -47,8 +48,11 @@ def test_lock_matches_pyproject():
 
     lockfile_path = REPO_ROOT / "uv.lock"
     assert lockfile_path.exists()
-    lock_content = lockfile_path.read_text(encoding="utf-8")
-    assert 'version = "7.11"' in lock_content, "pglast must remain pinned to 7.11 in uv.lock"
+    lock = tomllib.loads(lockfile_path.read_text(encoding="utf-8"))
+    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    dependency = next(dep for dep in pyproject["project"]["dependencies"] if dep.startswith("pglast=="))
+    locked = next(package for package in lock["package"] if package["name"] == "pglast")
+    assert locked["version"] == dependency.removeprefix("pglast==")
 
 
 def test_python_and_ruff_consistency():

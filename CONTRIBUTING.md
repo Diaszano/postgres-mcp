@@ -59,12 +59,17 @@ Breaking changes must indicate breaking impact using `!` immediately preceding t
 ## 4. Pull Request & Merge Policy
 
 1. **Pull Request Template**: Fill out all sections in the pull request template.
-2. **Automated Verification**: Ensure all tests, linters, and type checks pass locally:
+2. **Automated Verification**: Match CI's required lock, lint, type, unit/release, and package checks locally:
    ```bash
-   uv run pytest -q tests/unit tests/release
+   uv lock --check
    uv run ruff check .
    uv run ruff format --check .
+   uv run pyright
+   uv run pytest -q tests/unit tests/release
+   uv run python scripts/ci/check_version.py
+   uv build
    ```
+   The `just lock-check`, `just lint`, `just typecheck`, `just test-unit`, and `just build` recipes provide the matching shortcuts. CI runs PostgreSQL integration tests separately with its PG16/17 matrix; see [CI/CD](docs/ci-cd.md) for that Docker-backed command.
 3. **Squash Merge Strategy**: All pull requests are integrated into `main` using **Squash and Merge**. This ensures that each feature or fix represents a clean, atomic commit with semantic history on the mainline.
 4. **Code Ownership & Review**: Critical paths (`.github/workflows/`, `scripts/ci/`, `pyproject.toml`) require approval from maintainers designated in [`.github/CODEOWNERS`](.github/CODEOWNERS).
 
