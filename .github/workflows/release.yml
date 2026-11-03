@@ -62,28 +62,34 @@ jobs:
           OLD_VERSION=$(uv run python -c "import tomllib; print(tomllib.loads(open('pyproject.toml', 'rb').read().decode())['project']['version'])")
           echo "Current project version: ${OLD_VERSION}"
 
-          # Run Semantic Release versioning and publish
-          # Using pinned PSR 10.7.0 as mandated by spec
-          uvx python-semantic-release==10.7.0 version --print || true
+          # `version --print` returns the current version when there is no release.
+          NEXT_VERSION=$(uvx python-semantic-release==10.7.0 version --print)
 
-          NEW_VERSION=$(uv run python -c "import tomllib; print(tomllib.loads(open('pyproject.toml', 'rb').read().decode())['project']['version'])")
-
-          if [ "${NEW_VERSION}" != "${OLD_VERSION}" ]; then
-            echo "Publishing release for version v${NEW_VERSION}..."
-            uvx python-semantic-release==10.7.0 publish
-
-            RELEASE_SHA=$(git rev-parse HEAD)
-            echo "released=true" >> "$GITHUB_OUTPUT"
-            echo "tag=v${NEW_VERSION}" >> "$GITHUB_OUTPUT"
-            echo "release_sha=${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
-            echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
-          else
+          if [ "${NEXT_VERSION}" = "${OLD_VERSION}" ]; then
             echo "No version bump needed."
             echo "released=false" >> "$GITHUB_OUTPUT"
             echo "tag=" >> "$GITHUB_OUTPUT"
             echo "release_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
             echo "version=${OLD_VERSION}" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+
+          echo "Publishing release for version v${NEXT_VERSION}..."
+          uvx python-semantic-release==10.7.0 version
+
+          NEW_VERSION=$(uv run python -c "import tomllib; print(tomllib.loads(open('pyproject.toml', 'rb').read().decode())['project']['version'])")
+          if [ "${NEW_VERSION}" != "${NEXT_VERSION}" ]; then
+            echo "Semantic Release stamped ${NEW_VERSION}, expected ${NEXT_VERSION}." >&2
+            exit 1
+          fi
+
+          uvx python-semantic-release==10.7.0 publish --tag "v${NEW_VERSION}"
+
+          RELEASE_SHA=$(git rev-parse HEAD)
+          echo "released=true" >> "$GITHUB_OUTPUT"
+          echo "tag=v${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "release_sha=${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
 
   build-image:
     name: Build & Stage Multiarch GHCR Image

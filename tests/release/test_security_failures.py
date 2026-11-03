@@ -1,11 +1,83 @@
 """Tests for pipeline trust boundaries, supply chain attack surface and security failures."""
 
+import os
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 from scripts.ci.validate_release import validate_release_baseline
+
+
+def _run_release_step(tmp_path: Path, *, next_version: str, print_status: int = 0) -> tuple[subprocess.CompletedProcess[str], str, str]:
+    workflow = yaml.load(Path(".github/workflows/release.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    step = next(step for step in workflow["jobs"]["semantic-release"]["steps"] if step.get("name") == "Run Python Semantic Release")
+    version_file = tmp_path / "version"
+    version_file.write_text("0.3.0", encoding="utf-8")
+    commands = tmp_path / "commands"
+    publish_marker = tmp_path / "published"
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    (fake_bin / "uv").write_text('#!/bin/sh\ncat "$FAKE_VERSION_FILE"\n', encoding="utf-8")
+    (fake_bin / "uvx").write_text(
+        "#!/bin/sh\n"
+        'printf "%s\\n" "$*" >> "$FAKE_COMMANDS"\n'
+        'case " $* " in\n'
+        '  *" version --print "*) [ "$FAKE_PRINT_STATUS" -eq 0 ] || exit "$FAKE_PRINT_STATUS"; printf "%s\\n" "$NEXT_VERSION" ;;\n'
+        '  *" version "*) printf "%s\\n" "$NEXT_VERSION" > "$FAKE_VERSION_FILE" ;;\n'
+        '  *" publish "*) touch "$FAKE_PUBLISH_MARKER" ;;\n'
+        "esac\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "git").write_text('#!/bin/sh\nprintf "release-sha\\n"\n', encoding="utf-8")
+    for executable in fake_bin.iterdir():
+        executable.chmod(0o755)
+
+    output = tmp_path / "github-output"
+    env = {
+        **os.environ,
+        **step.get("env", {}),
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "GITHUB_OUTPUT": str(output),
+        "FAKE_VERSION_FILE": str(version_file),
+        "FAKE_COMMANDS": str(commands),
+        "FAKE_PUBLISH_MARKER": str(publish_marker),
+        "FAKE_PRINT_STATUS": str(print_status),
+        "NEXT_VERSION": next_version,
+    }
+    result = subprocess.run(["bash", "-euo", "pipefail", "-c", step["run"]], cwd=Path.cwd(), env=env, capture_output=True, text=True)
+    return result, output.read_text(encoding="utf-8") if output.exists() else "", commands.read_text(encoding="utf-8") if commands.exists() else ""
+
+
+def test_versioning_failure_stops_release(tmp_path: Path) -> None:
+    result, _, commands = _run_release_step(tmp_path, next_version="0.3.1", print_status=23)
+
+    assert result.returncode != 0, result.stdout
+    assert "publish" not in commands
+
+
+def test_no_version_change_is_a_successful_non_release(tmp_path: Path) -> None:
+    result, outputs, commands = _run_release_step(tmp_path, next_version="0.3.0")
+
+    assert result.returncode == 0, result.stderr
+    assert "released=false" in outputs
+    assert "version=0.3.0" in outputs
+    assert "publish" not in commands
+
+
+def test_version_change_publishes_matching_tag_and_outputs(tmp_path: Path) -> None:
+    result, outputs, commands = _run_release_step(tmp_path, next_version="0.3.1")
+
+    assert result.returncode == 0, result.stderr
+    assert "version --print" in commands
+    assert " version " in commands
+    assert "publish" in commands
+    assert "released=true" in outputs
+    assert "tag=v0.3.1" in outputs
+    assert "release_sha=release-sha" in outputs
+    assert "version=0.3.1" in outputs
 
 
 def test_release_has_no_pr_trigger():
@@ -42,6 +114,15 @@ def test_false_positive_scan_denied():
     assert "--exit-code 1" in content
     assert "HIGH,CRITICAL" in content
     assert "|| true" not in content
+
+
+def test_scheduled_security_scan_fails_on_high_critical_and_operational_errors():
+    workflow = yaml.load(Path(".github/workflows/security.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    scan = next(step for step in workflow["jobs"]["repo-scan"]["steps"] if step.get("name") == "Run Trivy Repository Scan")
+
+    assert scan["with"]["severity"] == "HIGH,CRITICAL"
+    assert scan["with"]["exit-code"] == "1"
+    assert scan.get("continue-on-error") is None
 
 
 def test_staging_digest_required():
