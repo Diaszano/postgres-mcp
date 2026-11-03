@@ -71,18 +71,18 @@ class _Entry:
 class DatabaseRegistry:
     def __init__(
         self,
-        config: DatabaseConfig,
+        config: DatabaseConfig | DatabaseCatalog,
         catalog: DatabaseCatalog | None = None,
         pool_factory: Callable[[str], DbConnPool] | None = None,
         clock: Callable[[], float] = time.monotonic,
         metrics: MetricsSink | None = None,
     ) -> None:
-        if isinstance(config, DatabaseCatalog) and catalog is None:
+        if isinstance(config, DatabaseCatalog):
             self._catalog = config
-            self._config = getattr(config, "_config", None) or DatabaseConfig(bootstrap_uri="postgresql://localhost/db")
+            self._config = config.config
         else:
             self._config = config
-            self._catalog = catalog  # type: ignore[assignment]
+            self._catalog = catalog or DatabaseCatalog(config)
         self._factory = pool_factory or self._default_factory
         self._clock = clock
         self.metrics = metrics or NoopMetrics()

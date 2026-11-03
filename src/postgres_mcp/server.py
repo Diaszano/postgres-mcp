@@ -16,6 +16,7 @@ from typing import Annotated
 from typing import Any
 from typing import List
 from typing import Literal
+from typing import cast
 
 import mcp.types as types
 from mcp.server.auth.middleware.auth_context import get_access_token
@@ -40,7 +41,6 @@ from .explain import ExplainPlanTool
 from .index.index_opt_base import MAX_NUM_INDEX_TUNING_QUERIES
 from .index.llm_opt import LLMOptimizerTool
 from .index.presentation import TextPresentation
-from .mcp_response import ToolResult
 from .mcp_response import error_result
 from .pagination.cursors import InMemoryCursorStore
 from .pagination.service import PaginationService
@@ -196,7 +196,7 @@ def format_text_response(text: Any) -> ResponseType:
     return [types.TextContent(type="text", text=str(text))]
 
 
-def format_error_response(error: str, *, code: str = "INTERNAL_ERROR") -> ToolResult:
+def format_error_response(error: str, *, code: str = "INTERNAL_ERROR") -> ResponseType:
     """Format an error response."""
     from unittest.mock import MagicMock
 
@@ -207,10 +207,11 @@ def format_error_response(error: str, *, code: str = "INTERNAL_ERROR") -> ToolRe
         **(result.structuredContent or {}),
         "result": [item.model_dump(mode="json", by_alias=True) for item in result.content],
     }
-    return result
+    # FastMCP handles CallToolResult directly; keep the list return annotation for its output schema.
+    return cast(ResponseType, result)
 
 
-def format_exception_response(operation: str, exc: BaseException) -> ToolResult:
+def format_exception_response(operation: str, exc: BaseException) -> ResponseType:
     log_public_error(logger, operation, exc)
     public_err = to_public_error(exc)
     return format_error_response(public_err.message, code=public_err.code)

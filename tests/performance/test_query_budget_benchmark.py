@@ -22,8 +22,8 @@ def test_large_result_memory_bound():
         returned_rows=len(rows),
         truncated=True,
         limit_reached="max_rows",
-        execution_time_ms=50.0,
-        timeout_seconds=15.0,
+        execution_time_ms=50,
+        timeout_seconds=15,
     )
     encoded = encode_bounded_result(bounded, max_result_bytes=2 * 1024 * 1024)
 

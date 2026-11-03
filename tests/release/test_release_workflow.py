@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import yaml
 
 
-def _load_release_workflow() -> dict:
+def _load_release_workflow() -> dict[str, Any]:
     root = Path(__file__).resolve().parents[2]
     path = root / ".github" / "workflows" / "release.yml"
     assert path.is_file(), ".github/workflows/release.yml missing"
@@ -17,7 +18,8 @@ def _load_release_workflow() -> dict:
 def test_release_workflow_structure_and_concurrency() -> None:
     wf = _load_release_workflow()
 
-    on_events = wf.get("on") or wf.get(True)
+    on_events = wf.get("on")
+    assert isinstance(on_events, dict)
     assert "workflow_call" in on_events
 
     # Release and recovery share this lock so neither can race alias promotion.
@@ -45,7 +47,8 @@ def test_workflow_uses_uv_and_pinned_psr() -> None:
 
 def test_release_job_outputs_contract() -> None:
     wf = _load_release_workflow()
-    on_events = wf.get("on") or wf.get(True)
+    on_events = wf.get("on")
+    assert isinstance(on_events, dict)
     call_config = on_events.get("workflow_call", {})
     outputs = call_config.get("outputs", {})
 

@@ -1,9 +1,12 @@
+# pyright: reportPrivateUsage=false
 """DTA session affinity against disposable PostgreSQL with mandatory HypoPG."""
 
 import asyncio
 from collections.abc import AsyncIterator
 from contextvars import ContextVar
 from typing import Any
+from typing import LiteralString
+from typing import cast
 
 import pytest
 import pytest_asyncio
@@ -15,6 +18,7 @@ from postgres_mcp import server
 from postgres_mcp.index.index_opt_base import IndexTuningBase
 from postgres_mcp.sql import SqlDriver
 from postgres_mcp.sql.database_session import database_session
+from tests.type_helpers import text_at
 
 pytestmark = pytest.mark.asyncio
 operation: ContextVar[str] = ContextVar("tuning_operation", default="single")
@@ -26,6 +30,7 @@ async def tuning_env(hypopg_postgres: Any, monkeypatch: pytest.MonkeyPatch) -> A
         ("app_development", "tuning_items", "value int, other int"),
         ("app_testing", "tuning_events", "account int, region int"),
     ):
+        columns = cast(LiteralString, columns)
         with hypopg_postgres.admin(database) as conn:
             conn.execute("CREATE EXTENSION IF NOT EXISTS hypopg")
             conn.execute(sql.SQL("GRANT SELECT ON hypopg_list_indexes TO {}").format(sql.Identifier(hypopg_postgres.mcp_role)))
@@ -93,7 +98,7 @@ async def test_tuning_sequence_uses_single_backend_pid(tuning_env: Any, monkeypa
     observer = Observe()
     observer.install(monkeypatch)
     response = await server.analyze_query_indexes(["SELECT * FROM tuning_items WHERE value = 7"], 10000, "dta", "app_development")
-    assert "Error" not in response[0].text, response[0].text
+    assert "Error" not in text_at(response), text_at(response)
     assert {kind for _, kind, _, _ in observer.events} >= {"hypopg_create_index", "hypopg_list_indexes", "EXPLAIN", "hypopg_reset"}
     assert len({pid for _, _, pid, _ in observer.events}) == 1
     assert observer.list_sizes and all(size > 0 for size in observer.list_sizes)
@@ -130,7 +135,7 @@ async def _parallel_tuning(monkeypatch: pytest.MonkeyPatch, cross_database: bool
             "account" if cross_database else "other",
         ),
     )
-    assert all("Error" not in response[0].text for response in responses), [response[0].text for response in responses]
+    assert all("Error" not in text_at(response) for response in responses), [text_at(response) for response in responses]
     assert observer.list_sizes == [1, 1]
     assert len(observer.definitions["left"]) == len(observer.definitions["right"]) == 1
     assert "(value)" in observer.definitions["left"][0]
@@ -232,7 +237,7 @@ async def test_cleanup_after_cancel_and_error(
                 await task
         else:
             response = await task
-            assert "error" in response[0].text.lower(), response[0].text
+            assert "error" in text_at(response).lower(), text_at(response)
     finally:
         release_cleanup.set()
         if not task.done():
@@ -241,4 +246,4 @@ async def test_cleanup_after_cancel_and_error(
     observer.after_list = observer.before_reset = None
     await _assert_pool_clean(tuning_env)
     response = await _analyze("next", "app_development", "tuning_items", "value")
-    assert "Error" not in response[0].text, response[0].text
+    assert "Error" not in text_at(response), text_at(response)

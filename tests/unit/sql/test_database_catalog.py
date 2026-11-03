@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -17,8 +18,8 @@ from postgres_mcp.sql.database_catalog import discover_postgres_databases
 URI = "postgresql://dev:s3cret@localhost:5432/postgres"
 
 
-def make_config(**overrides) -> DatabaseConfig:
-    values = dict(
+def make_config(**overrides: Any) -> DatabaseConfig:
+    values: dict[str, Any] = dict(
         bootstrap_uri=URI,
         auto_discover=True,
         default_database="App_Test",
@@ -52,6 +53,7 @@ async def test_discovery_sql_uses_pg_catalog_and_connect_privilege():
 
     assert result == {"App_Test", "postgres"}
     connect.assert_awaited_once()
+    assert connect.await_args is not None
     assert connect.await_args.args[0] == URI
     sql = conn.execute.await_args.args[0]
     assert "pg_catalog.pg_database" in sql

@@ -26,7 +26,7 @@ class QueryAdmission:
     def __init__(self, max_concurrency: int):
         self._semaphore = asyncio.Semaphore(max_concurrency)
 
-    async def run(self, operation: Callable[[], Awaitable[T]], timeout_seconds: int) -> T:
+    async def run(self, operation: Callable[[], Awaitable[T]], timeout_seconds: float) -> T:
         deadline = asyncio.get_running_loop().time() + timeout_seconds
         token = _query_deadline.set(deadline)
         try:

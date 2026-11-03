@@ -2,6 +2,7 @@ import asyncio
 from contextlib import asynccontextmanager
 
 import pytest
+from psycopg_pool import AsyncConnectionPool
 
 from postgres_mcp.database_config import DatabaseConfig
 from postgres_mcp.security.errors import DatabaseNotAllowedError
@@ -10,6 +11,7 @@ from postgres_mcp.sql.database_registry import DatabaseRegistry
 from postgres_mcp.sql.database_registry import PoolCapacityError
 from postgres_mcp.sql.database_session import database_session as session
 from postgres_mcp.sql.sql_driver import DbConnPool
+from tests.type_helpers import first_item
 
 
 class Connection:
@@ -20,8 +22,8 @@ class Connection:
         self.rollbacks = 0
         self.closed = False
         self.rollback_started = asyncio.Event()
-        self.rollback_gate = None
-        self.rollback_error = None
+        self.rollback_gate: asyncio.Event | None = None
+        self.rollback_error: Exception | None = None
         self.fail_command = "FAIL"
 
     @asynccontextmanager
@@ -85,10 +87,10 @@ class Pool(DbConnPool):
         self.closed = False
         self.on_checkin = lambda: None
         self.checkout_started = asyncio.Event()
-        self.checkout_gate = None
+        self.checkout_gate: asyncio.Event | None = None
 
-    async def pool_connect(self):
-        return self
+    async def pool_connect(self, connection_url=None) -> AsyncConnectionPool:
+        return self  # type: ignore[return-value]
 
     @asynccontextmanager
     async def connection(self):
@@ -138,7 +140,7 @@ async def test_one_backend_connection_for_multiple_commands():
         first = await driver.execute_query("SELECT pg_backend_pid()")
         second = await driver.execute_query("SELECT pg_backend_pid()")
         assert first == second
-        assert first[0].cells == {"pid": id(pool.backend)}
+        assert first_item(first).cells == {"pid": id(pool.backend)}
         assert pool.checkouts == 1
     assert pool.checkins == 1
 

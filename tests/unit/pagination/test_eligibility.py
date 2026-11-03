@@ -1,3 +1,5 @@
+from typing import Literal
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -8,8 +10,8 @@ from postgres_mcp.sql import SafeSqlDriver
 from postgres_mcp.sql import SqlDriver
 
 
-async def inspect(sql, driver, mode="keyset"):
-    return await inspect_pageable_select(sql, mode, driver)
+async def inspect(sql, driver, mode: Literal["offset", "keyset", "other"] = "keyset"):
+    return await inspect_pageable_select(sql, cast(Literal["offset", "keyset"], mode), driver)
 
 
 def catalog_driver(verified=True):

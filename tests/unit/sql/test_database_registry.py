@@ -1,6 +1,8 @@
 import asyncio
 from collections import Counter
 from contextlib import nullcontext
+from typing import Any
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -18,8 +20,8 @@ URI = "postgresql://dev:s3cret@localhost:5432/postgres"
 NAMES = {"postgres", "app_testing", "app_development", "app_bad"}
 
 
-def make_config(**overrides) -> DatabaseConfig:
-    values = dict(
+def make_config(**overrides: Any) -> DatabaseConfig:
+    values: dict[str, Any] = dict(
         bootstrap_uri=URI,
         auto_discover=True,
         default_database="app_testing",
@@ -74,7 +76,7 @@ class Harness:
         self.discover = AsyncMock(side_effect=lambda _uri: set(self.discovered))
         self.catalog_now = 0.0
         self.catalog = DatabaseCatalog(config, discover=self.discover, clock=lambda: self.catalog_now)
-        self.registry = DatabaseRegistry(config, self.catalog, pool_factory=self.factory, clock=lambda: self.now)
+        self.registry = DatabaseRegistry(config, self.catalog, pool_factory=cast(Any, self.factory), clock=lambda: self.now)
 
     def factory(self, name: str) -> FakePool:
         self.calls[name] += 1
@@ -95,11 +97,13 @@ async def settle() -> None:
 async def test_first_use_opens_only_requested_pool():
     h = Harness()
     async with h.registry.acquire("app_testing") as pool_a:
+        pool_a = cast(FakePool, pool_a)
         assert pool_a is h.pool("app_testing")
     assert dict(h.calls) == {"app_testing": 1}
     async with h.registry.acquire("app_testing") as again:
         assert again is pool_a
     async with h.registry.acquire("app_development") as pool_b:
+        pool_b = cast(FakePool, pool_b)
         assert pool_b is not pool_a
     assert h.calls["app_testing"] == 1
     assert pool_a.connects == 1
@@ -401,7 +405,7 @@ async def test_refresh_revocation_blocks_new_lease(already_open):
 async def test_refresh_revocation_closes_idle_pool():
     h = Harness()
     async with h.registry.acquire("app_development") as pool:
-        pass
+        pool = cast(FakePool, pool)
     h.catalog.names = AsyncMock(
         side_effect=[
             (["app_development", "app_testing"], False),

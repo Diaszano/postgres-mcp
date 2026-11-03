@@ -11,13 +11,10 @@ from postgres_mcp.security.errors import to_public_error
 
 
 class ToolResult(types.CallToolResult):
-    """CallToolResult compatible with legacy code expecting a subscriptable sequence of contents."""
+    """CallToolResult compatible with legacy code expecting indexed contents."""
 
-    def __getitem__(self, index: int) -> types.TextContent | types.ImageContent | types.EmbeddedResource:
+    def __getitem__(self, index: int) -> types.ContentBlock:
         return self.content[index]
-
-    def __iter__(self):
-        return iter(self.content)
 
     def __len__(self) -> int:
         return len(self.content)
@@ -35,7 +32,7 @@ def success_result(
         content=[types.TextContent(type="text", text=text)],
         structuredContent=structured,
         isError=False,
-        meta=dict(meta) if meta else None,
+        _meta=dict(meta) if meta else None,
     )
 
 
@@ -61,7 +58,7 @@ def error_result(
         content=[types.TextContent(type="text", text=text)],
         structuredContent=error_payload,
         isError=True,
-        meta=dict(meta) if meta else None,
+        _meta=dict(meta) if meta else None,
     )
 
 
@@ -79,7 +76,7 @@ def format_mcp_result(
             content=result_or_exc.content,
             structuredContent=result_or_exc.structuredContent,
             isError=result_or_exc.isError,
-            meta=result_or_exc.meta,
+            _meta=result_or_exc.meta,
         )
 
     if isinstance(result_or_exc, BaseException):
@@ -94,5 +91,5 @@ def format_mcp_result(
         content=[types.TextContent(type="text", text=text)],
         structuredContent={"result": result_or_exc},
         isError=False,
-        meta=dict(meta) if meta else None,
+        _meta=dict(meta) if meta else None,
     )

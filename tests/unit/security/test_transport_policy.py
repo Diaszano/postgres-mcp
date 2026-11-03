@@ -1,3 +1,4 @@
+
 import asyncio
 import socket
 import sys
@@ -14,6 +15,8 @@ from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.fastmcp import FastMCP
 from mcp.types import TextContent
 from starlette.testclient import TestClient
+
+from tests.type_helpers import text_at
 
 
 @pytest.fixture(autouse=True)
@@ -252,7 +255,7 @@ async def test_verified_sse_principal(auth_env):
                     await session.initialize()
                     result = await session.call_tool("principal", {})
                     assert isinstance(result.content[0], TextContent)
-                    assert result.content[0].text == "configured-http-client"
+                    assert text_at(result.content) == "configured-http-client"
         finally:
             runner.should_exit = True
             await asyncio.wait_for(task, timeout=5)
