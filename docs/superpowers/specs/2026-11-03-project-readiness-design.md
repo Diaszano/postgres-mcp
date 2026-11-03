@@ -1,7 +1,7 @@
 # Organização e prontidão do postgres-mcp
 
 Data: 2026-11-03
-Status: proposta para aprovação; abordagem incremental escolhida pelo mantenedor.
+Status: aprovado pelo mantenedor em 2026-11-03; abordagem incremental escolhida.
 
 ## Intenção
 
