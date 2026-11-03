@@ -39,6 +39,7 @@ dev = [
     "pytest>=9.0.2",
     "pyyaml>=6.0.2",
     "ruff==0.14.13",
+    "testcontainers[postgres]>=4.9.0",
 ]
 
 [tool.black]
