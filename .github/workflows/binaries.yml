@@ -1,0 +1,66 @@
+name: Build and Release Standalone Binaries
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build binaries for (e.g. v0.4.2)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build-binaries:
+    name: Build (${{ matrix.target_os }}_${{ matrix.target_arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            target_os: darwin
+            target_arch: arm64
+          - runner: macos-13
+            target_os: darwin
+            target_arch: amd64
+          - runner: ubuntu-latest
+            target_os: linux
+            target_arch: amd64
+          - runner: ubuntu-24.04-arm
+            target_os: linux
+            target_arch: arm64
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag || github.ref }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1edb52594c857e2b5b13128931090f0640537287 # v5.3.0
+        with:
+          version: "0.13.7"
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Build standalone binary
+        env:
+          VERSION: ${{ github.event.release.tag_name && replace(github.event.release.tag_name, 'v', '') || '' }}
+        run: |
+          bash scripts/release/build_binary.sh "${{ matrix.target_os }}" "${{ matrix.target_arch }}" "dist"
+
+      - name: Upload binaries to GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          TARGET_TAG="${TAG_NAME}"
+          if [[ -z "${TARGET_TAG}" ]]; then
+            TARGET_TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName')
+          fi
+          echo "Uploading assets to release ${TARGET_TAG}"
+          gh release upload "${TARGET_TAG}" dist/*.tar.gz dist/*.sha256 --clobber
