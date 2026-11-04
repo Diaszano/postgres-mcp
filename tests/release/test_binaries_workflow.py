@@ -48,3 +48,14 @@ def test_binaries_workflow_calls_build_script_and_uploads() -> None:
 
     assert "build_binary.sh" in steps_text
     assert "gh release upload" in steps_text or "upload-release-asset" in steps_text or "action-gh-release" in steps_text
+
+
+def test_binaries_workflow_has_update_tap_job() -> None:
+    wf = _load_workflow()
+    update_job = wf.get("jobs", {}).get("update-tap", {})
+    assert update_job, "jobs.update-tap must exist"
+    assert "build-binaries" in update_job.get("needs", [])
+
+    steps = update_job.get("steps", [])
+    steps_text = yaml.dump(steps)
+    assert "update_homebrew_tap.py" in steps_text
