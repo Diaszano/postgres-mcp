@@ -26,7 +26,7 @@ jobs:
       commit_sha: ${{ steps.validate.outputs.commit_sha }}
     steps:
       - name: Checkout target tag
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.tag }}
           fetch-depth: 0
@@ -58,7 +58,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout target commit
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.validate-ref.outputs.commit_sha }}
 
