@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-PACKAGE_NAME="${PACKAGE_NAME:-postgres-mcp}"
+PACKAGE_NAME="${PACKAGE_NAME:-pgscope}"
 
 echo "==> Synchronizing uv.lock for ${PACKAGE_NAME}..."
 uv lock --upgrade-package "${PACKAGE_NAME}"

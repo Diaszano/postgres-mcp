@@ -4,13 +4,13 @@ from contextlib import asynccontextmanager
 import pytest
 from psycopg_pool import AsyncConnectionPool
 
-from postgres_mcp.database_config import DatabaseConfig
-from postgres_mcp.security.errors import DatabaseNotAllowedError
-from postgres_mcp.sql.database_catalog import DatabaseCatalog
-from postgres_mcp.sql.database_registry import DatabaseRegistry
-from postgres_mcp.sql.database_registry import PoolCapacityError
-from postgres_mcp.sql.database_session import database_session as session
-from postgres_mcp.sql.sql_driver import DbConnPool
+from pgscope.database_config import DatabaseConfig
+from pgscope.security.errors import DatabaseNotAllowedError
+from pgscope.sql.database_catalog import DatabaseCatalog
+from pgscope.sql.database_registry import DatabaseRegistry
+from pgscope.sql.database_registry import PoolCapacityError
+from pgscope.sql.database_session import database_session as session
+from pgscope.sql.sql_driver import DbConnPool
 from tests.type_helpers import first_item
 
 

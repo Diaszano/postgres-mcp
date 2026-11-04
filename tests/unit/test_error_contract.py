@@ -7,17 +7,17 @@ from unittest.mock import patch
 import pytest
 from mcp import types
 
-from postgres_mcp.security.errors import SQLValidationError
-from postgres_mcp.server import analyze_db_health
-from postgres_mcp.server import execute_sql
-from postgres_mcp.server import mcp
-from postgres_mcp.sql.database_registry import PoolCapacityError
+from pgscope.security.errors import SQLValidationError
+from pgscope.server import analyze_db_health
+from pgscope.server import execute_sql
+from pgscope.server import mcp
+from pgscope.sql.database_registry import PoolCapacityError
 from tests.type_helpers import text_at
 
 
 @pytest.mark.asyncio
 async def test_execute_sql_safe_error_on_wire():
-    with patch("postgres_mcp.server.get_sql_driver") as mock_get:
+    with patch("pgscope.server.get_sql_driver") as mock_get:
         mock_driver = MagicMock()
         mock_driver.execute_query = AsyncMock(side_effect=SQLValidationError("Unsafe command"))
         mock_get.return_value.__aenter__.return_value = mock_driver
@@ -58,7 +58,7 @@ def test_existing_read_only_annotations():
 
 @pytest.mark.asyncio
 async def test_legacy_text_fallback():
-    with patch("postgres_mcp.server.get_sql_driver") as mock_get:
+    with patch("pgscope.server.get_sql_driver") as mock_get:
         mock_driver = MagicMock()
         mock_cell = MagicMock()
         mock_cell.cells = {"col": 123}
@@ -73,7 +73,7 @@ async def test_legacy_text_fallback():
 
 @pytest.mark.asyncio
 async def test_expected_health_errors():
-    with patch("postgres_mcp.server.get_sql_driver") as mock_get:
+    with patch("pgscope.server.get_sql_driver") as mock_get:
         mock_get.return_value.__aenter__.side_effect = PoolCapacityError("exhausted")
         res = await analyze_db_health("all")
         assert isinstance(res, types.CallToolResult)
@@ -81,7 +81,7 @@ async def test_expected_health_errors():
         assert res.structuredContent is not None
         assert res.structuredContent["error"]["code"] == "POOL_CAPACITY_EXCEEDED"
 
-    with patch("postgres_mcp.server.get_sql_driver") as mock_get:
+    with patch("pgscope.server.get_sql_driver") as mock_get:
         mock_get.return_value.__aenter__.side_effect = RuntimeError("database secret pass")
         res = await analyze_db_health("all")
         assert isinstance(res, types.CallToolResult)

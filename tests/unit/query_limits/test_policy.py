@@ -7,15 +7,15 @@ from unittest.mock import patch
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
-from postgres_mcp.query_limits.config import QueryBudgetConfig
-from postgres_mcp.query_limits.results import BoundedQueryResult
-from postgres_mcp.security.errors import PublicToolError
-from postgres_mcp.server import execute_sql
+from pgscope.query_limits.config import QueryBudgetConfig
+from pgscope.query_limits.results import BoundedQueryResult
+from pgscope.security.errors import PublicToolError
+from pgscope.server import execute_sql
 from tests.type_helpers import text_at
 
 
 def test_agent_override_within_ceilings():
-    from postgres_mcp.query_limits.policy import resolve_query_limits
+    from pgscope.query_limits.policy import resolve_query_limits
 
     config = QueryBudgetConfig(enabled=True)
     assert resolve_query_limits(config, 1000, 20).max_rows == 1000
@@ -26,15 +26,15 @@ def test_agent_override_within_ceilings():
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("max_rows", "timeout_seconds"), [(5001, None), (None, 61)])
 async def test_hard_limits_rejected_before_checkout(monkeypatch, max_rows, timeout_seconds):
-    import postgres_mcp.server as server
-    from postgres_mcp.query_limits.policy import resolve_query_limits
+    import pgscope.server as server
+    from pgscope.query_limits.policy import resolve_query_limits
 
     monkeypatch.setattr(server, "query_budget_config", QueryBudgetConfig(enabled=True))
     with pytest.raises(PublicToolError) as exc:
         resolve_query_limits(server.query_budget_config, max_rows, timeout_seconds)
     assert exc.value.code == "LIMIT_EXCEEDED"
 
-    with patch("postgres_mcp.server.get_sql_driver") as get_driver:
+    with patch("pgscope.server.get_sql_driver") as get_driver:
         response = await execute_sql("SELECT 1", None, max_rows, timeout_seconds)
 
     assert "exceeds the configured limit" in text_at(response)
@@ -43,7 +43,7 @@ async def test_hard_limits_rejected_before_checkout(monkeypatch, max_rows, timeo
 
 @pytest.mark.asyncio
 async def test_registered_tool_rejects_coercive_budget_inputs(monkeypatch):
-    import postgres_mcp.server as server
+    import pgscope.server as server
 
     calls = []
 
@@ -76,7 +76,7 @@ async def test_registered_tool_rejects_coercive_budget_inputs(monkeypatch):
 
 @pytest.mark.parametrize("value", [True, 0, -1, 1.2, "100"])
 def test_invalid_agent_values_are_rejected_without_coercion(value):
-    from postgres_mcp.query_limits.policy import resolve_query_limits
+    from pgscope.query_limits.policy import resolve_query_limits
 
     with pytest.raises(PublicToolError) as exc:
         resolve_query_limits(QueryBudgetConfig(enabled=True), value, None)
@@ -85,7 +85,7 @@ def test_invalid_agent_values_are_rejected_without_coercion(value):
 
 
 def test_disabled_guardrails_reject_explicit_override():
-    from postgres_mcp.query_limits.policy import resolve_query_limits
+    from pgscope.query_limits.policy import resolve_query_limits
 
     config = QueryBudgetConfig(enabled=False)
 

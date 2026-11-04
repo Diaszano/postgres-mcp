@@ -31,7 +31,7 @@ def test_scan_script_fails_on_missing_or_invalid_image() -> None:
     assert res_no_args.returncode != 0, "Script must fail when called without image reference"
 
     # Missing sha256 digest
-    res_no_digest = subprocess.run([str(script_path), "ghcr.io/diaszano/postgres-mcp:latest"], capture_output=True, text=True)
+    res_no_digest = subprocess.run([str(script_path), "ghcr.io/diaszano/pgscope:latest"], capture_output=True, text=True)
     assert res_no_digest.returncode != 0, "Script must require immutable @sha256: digest"
     assert "sha256" in res_no_digest.stderr.lower() or "digest" in res_no_digest.stderr.lower()
 

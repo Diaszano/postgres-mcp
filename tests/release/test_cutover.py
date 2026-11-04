@@ -57,7 +57,7 @@ def test_ghcr_primary_image_reference() -> None:
     assert release_wf.is_file()
     content = release_wf.read_text(encoding="utf-8")
 
-    assert "ghcr.io/diaszano/postgres-mcp" in content
+    assert "ghcr.io/diaszano/pgscope" in content
 
 
 def test_release_checklist_documents_ghcr_and_psr() -> None:
@@ -66,4 +66,4 @@ def test_release_checklist_documents_ghcr_and_psr() -> None:
 
     assert "GHCR" in checklist
     assert "Semantic Release" in checklist or "PSR" in checklist
-    assert "ghcr.io/diaszano/postgres-mcp" in checklist
+    assert "ghcr.io/diaszano/pgscope" in checklist

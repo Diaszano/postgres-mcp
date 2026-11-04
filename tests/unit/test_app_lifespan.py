@@ -2,8 +2,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from postgres_mcp.app import create_mcp_app
-from postgres_mcp.runtime import AppRuntime
+from pgscope.app import create_mcp_app
+from pgscope.runtime import AppRuntime
 
 
 @pytest.mark.asyncio
@@ -47,8 +47,8 @@ async def test_tools_resolve_runtime_from_context():
 
 
 def test_stdio_sse_http_startup_unchanged():
-    from postgres_mcp.security.transport import HttpAuthConfig
-    from postgres_mcp.security.transport import validate_http_deployment
+    from pgscope.security.transport import HttpAuthConfig
+    from pgscope.security.transport import validate_http_deployment
 
     auth = HttpAuthConfig(token="a" * 32, allowed_hosts=("localhost",), allowed_origins=("https://localhost",))
     validate_http_deployment("streamable-http", "127.0.0.1", auth)

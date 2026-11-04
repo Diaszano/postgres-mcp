@@ -1299,7 +1299,7 @@ wheels = [
 ]
 
 [[package]]
-name = "postgres-mcp"
+name = "pgscope"
 version = "0.5.1"
 source = { editable = "." }
 dependencies = [

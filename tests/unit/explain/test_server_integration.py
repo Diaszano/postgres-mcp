@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 import pytest_asyncio
 
-from postgres_mcp.server import explain_query
+from pgscope.server import explain_query
 from tests.type_helpers import text_at
 
 
@@ -52,12 +52,12 @@ async def test_explain_query_integration():
     mock_text_result.text = result_text
 
     # Patch the format_text_response function
-    with patch("postgres_mcp.server.format_text_response", return_value=[mock_text_result]):
+    with patch("pgscope.server.format_text_response", return_value=[mock_text_result]):
         # Patch the get_sql_driver
         driver = MagicMock()
-        with patch("postgres_mcp.server.get_sql_driver", driver_context(driver)):
+        with patch("pgscope.server.get_sql_driver", driver_context(driver)):
             # Patch the ExplainPlanTool
-            with patch("postgres_mcp.server.ExplainPlanTool") as tool_cls:
+            with patch("pgscope.server.ExplainPlanTool") as tool_cls:
                 result = await explain_query("SELECT * FROM users", hypothetical_indexes=None)
                 tool_cls.assert_called_once_with(sql_driver=driver)
 
@@ -76,12 +76,12 @@ async def test_explain_query_with_analyze_integration():
     mock_text_result.text = result_text
 
     # Patch the format_text_response function
-    with patch("postgres_mcp.server.format_text_response", return_value=[mock_text_result]):
+    with patch("pgscope.server.format_text_response", return_value=[mock_text_result]):
         # Patch the get_sql_driver
         driver = MagicMock()
-        with patch("postgres_mcp.server.get_sql_driver", driver_context(driver)):
+        with patch("pgscope.server.get_sql_driver", driver_context(driver)):
             # Patch the ExplainPlanTool
-            with patch("postgres_mcp.server.ExplainPlanTool") as tool_cls:
+            with patch("pgscope.server.ExplainPlanTool") as tool_cls:
                 result = await explain_query("SELECT * FROM users", analyze=True, hypothetical_indexes=None)
                 tool_cls.assert_called_once_with(sql_driver=driver)
 
@@ -104,7 +104,7 @@ async def test_explain_query_with_hypothetical_indexes_integration():
     test_indexes = [{"table": "users", "columns": ["email"]}]
 
     # Patch the format_text_response function
-    with patch("postgres_mcp.server.format_text_response", return_value=[mock_text_result]):
+    with patch("pgscope.server.format_text_response", return_value=[mock_text_result]):
         # Create mock SafeSqlDriver that returns extension exists
         mock_safe_driver = MagicMock()
         mock_execute_query = AsyncMock(return_value=[MockCell({"exists": 1})])
@@ -112,11 +112,11 @@ async def test_explain_query_with_hypothetical_indexes_integration():
 
         # Patch the get_sql_driver
         with (
-            patch("postgres_mcp.server.get_sql_driver", driver_context(mock_safe_driver)),
-            patch("postgres_mcp.server.database_session", driver_context(mock_safe_driver)),
+            patch("pgscope.server.get_sql_driver", driver_context(mock_safe_driver)),
+            patch("pgscope.server.database_session", driver_context(mock_safe_driver)),
         ):
             # Patch the ExplainPlanTool
-            with patch("postgres_mcp.server.ExplainPlanTool") as tool_cls:
+            with patch("pgscope.server.ExplainPlanTool") as tool_cls:
                 result = await explain_query(test_sql, analyze=False, hypothetical_indexes=test_indexes)
                 tool_cls.assert_called_once_with(sql_driver=mock_safe_driver)
                 mock_execute_query.assert_awaited()
@@ -145,14 +145,14 @@ async def test_explain_query_missing_hypopg_integration():
     mock_safe_driver.execute_query = mock_execute_query
 
     # Patch the format_text_response function
-    with patch("postgres_mcp.server.format_text_response", return_value=[mock_text_result]):
+    with patch("pgscope.server.format_text_response", return_value=[mock_text_result]):
         # Patch the get_sql_driver
         with (
-            patch("postgres_mcp.server.get_sql_driver", driver_context(mock_safe_driver)),
-            patch("postgres_mcp.server.database_session", driver_context(mock_safe_driver)),
+            patch("pgscope.server.get_sql_driver", driver_context(mock_safe_driver)),
+            patch("pgscope.server.database_session", driver_context(mock_safe_driver)),
         ):
             # Patch the ExplainPlanTool
-            with patch("postgres_mcp.server.ExplainPlanTool") as tool_cls:
+            with patch("pgscope.server.ExplainPlanTool") as tool_cls:
                 result = await explain_query(test_sql, analyze=False, hypothetical_indexes=test_indexes)
                 tool_cls.assert_called_once_with(sql_driver=mock_safe_driver)
                 mock_execute_query.assert_awaited()
@@ -172,10 +172,10 @@ async def test_explain_query_error_handling_integration():
     mock_text_result.text = f"Error: {error_message}"
 
     # Patch the format_error_response function
-    with patch("postgres_mcp.server.format_error_response", return_value=[mock_text_result]):
+    with patch("pgscope.server.format_error_response", return_value=[mock_text_result]):
         # Patch the get_sql_driver to throw an exception
         with patch(
-            "postgres_mcp.server.get_sql_driver",
+            "pgscope.server.get_sql_driver",
             side_effect=Exception(error_message),
         ):
             result = await explain_query("INVALID SQL")

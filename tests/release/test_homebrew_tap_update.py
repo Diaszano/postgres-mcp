@@ -14,7 +14,7 @@ def test_generate_cask_content_structure() -> None:
     }
     cask_text = generate_cask_content("0.4.2", checksums)
 
-    assert 'cask "postgres-mcp" do' in cask_text
+    assert 'cask "pgscope" do' in cask_text
     assert 'version "0.4.2"' in cask_text
     assert "on_macos do" in cask_text
     assert "on_intel do" in cask_text
@@ -24,5 +24,5 @@ def test_generate_cask_content_structure() -> None:
     assert checksums["darwin_arm64"] in cask_text
     assert checksums["linux_amd64"] in cask_text
     assert checksums["linux_arm64"] in cask_text
-    assert 'binary "postgres-mcp"' in cask_text
-    assert "https://github.com/Diaszano/postgres-mcp/releases/download/v#{version}/" in cask_text
+    assert 'binary "pgscope"' in cask_text
+    assert "https://github.com/Diaszano/pgscope/releases/download/v#{version}/" in cask_text

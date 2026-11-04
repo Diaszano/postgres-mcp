@@ -1,6 +1,6 @@
-# Contributing to postgres-mcp
+# Contributing to pgscope
 
-Thank you for your interest in contributing to `postgres-mcp`! We welcome contributions that maintain high engineering standards, security guarantees, and reproducible automation.
+Thank you for your interest in contributing to `pgscope`! We welcome contributions that maintain high engineering standards, security guarantees, and reproducible automation.
 
 ---
 

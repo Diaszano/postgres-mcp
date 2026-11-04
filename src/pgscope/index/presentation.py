@@ -1,4 +1,4 @@
-"""Database Tuning Advisor (DTA) tool for Postgres MCP."""
+"""Database Tuning Advisor (DTA) tool for pgscope."""
 
 import logging
 import os
@@ -125,7 +125,7 @@ class TextPresentation:
             )
 
             # Prepare the response to send back to the caller
-            include_langfuse_trace = os.environ.get("POSTGRES_MCP_INCLUDE_LANGFUSE_TRACE", "true").lower() == "true"
+            include_langfuse_trace = os.environ.get("PGSCOPE_INCLUDE_LANGFUSE_TRACE", "true").lower() == "true"
             langfuse_trace = {"_langfuse_trace": session.dta_traces} if include_langfuse_trace else {}
 
             if session.error:

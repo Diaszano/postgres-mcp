@@ -32,7 +32,7 @@ If the built-in app cannot be granted a narrowly scoped bypass, keep the PR requ
 ### Release tags and GHCR
 
 - Add a tag ruleset for `v*` that prevents updates and deletions after creation. The release automation needs permission to create tags; confirm the selected ruleset does not prevent the semantic release workflow from creating them.
-- Verify that `ghcr.io/diaszano/postgres-mcp` exists, confirm intended visibility, and grant the repository Actions access needed for `GITHUB_TOKEN` package writes. Record the resulting package settings; they remain unverified today.
+- Verify that `ghcr.io/diaszano/pgscope` exists, confirm intended visibility, and grant the repository Actions access needed for `GITHUB_TOKEN` package writes. Record the resulting package settings; they remain unverified today.
 - Keep repository-wide Actions defaults read-only. The workflows declare narrow per-job `contents: write` or `packages: write` only where release work requires them. No `id-token: write` permission is used.
 
 ## Rollback
@@ -40,7 +40,7 @@ If the built-in app cannot be granted a narrowly scoped bypass, keep the PR requ
 Deploy a previously verified digest, replacing the explicit placeholder below with a digest recorded from an actual trusted release:
 
 ```bash
-docker pull ghcr.io/diaszano/postgres-mcp@sha256:<verified-release-digest>
+docker pull ghcr.io/diaszano/pgscope@sha256:<verified-release-digest>
 ```
 
 Do not rewrite published version tags. For a fix, merge a conventional `fix:` change and let the release workflow publish a new patch version. For interrupted image delivery, use the documented [retry-publish workflow](ci-cd.md#4-partial-release-recovery-procedure), which checks both architectures and preserves immutable version tags.

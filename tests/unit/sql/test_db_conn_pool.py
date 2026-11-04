@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from postgres_mcp.sql.sql_driver import DbConnPool
+from pgscope.sql.sql_driver import DbConnPool
 
 
 class AsyncContextManagerMock(AsyncMock):
@@ -49,7 +49,7 @@ def mock_pool():
 @pytest.mark.asyncio
 async def test_pool_connect_success(mock_pool):
     """Test successful connection to the database pool."""
-    with patch("postgres_mcp.sql.sql_driver.AsyncConnectionPool", return_value=mock_pool):
+    with patch("pgscope.sql.sql_driver.AsyncConnectionPool", return_value=mock_pool):
         # Patch the connection test part to skip it
         with patch.object(DbConnPool, "pool_connect", new=AsyncMock(return_value=mock_pool)) as mock_connect:
             db_pool = DbConnPool("postgresql://user:pass@localhost/db")
@@ -81,8 +81,8 @@ async def test_pool_connect_with_retry(mock_pool):
             self._is_valid = True
             return mock_pool
 
-    with patch("postgres_mcp.sql.sql_driver.AsyncConnectionPool", return_value=mock_pool):
-        with patch("postgres_mcp.server.asyncio.sleep", AsyncMock()) as mock_sleep:
+    with patch("pgscope.sql.sql_driver.AsyncConnectionPool", return_value=mock_pool):
+        with patch("pgscope.server.asyncio.sleep", AsyncMock()) as mock_sleep:
             with patch.object(DbConnPool, "pool_connect", mock_pool_connect):
                 db_pool = DbConnPool("postgresql://user:pass@localhost/db")
 
@@ -106,7 +106,7 @@ async def test_pool_connect_all_retries_fail(mock_pool):
     mock_pool.open.side_effect = Exception("Persistent connection error")
 
     # Configure AsyncConnectionPool's constructor to return our mock
-    with patch("postgres_mcp.sql.sql_driver.AsyncConnectionPool", return_value=mock_pool):
+    with patch("pgscope.sql.sql_driver.AsyncConnectionPool", return_value=mock_pool):
         # Mock sleep to speed up test
         with patch("asyncio.sleep", AsyncMock()):
             db_pool = DbConnPool("postgresql://user:pass@localhost/db")
@@ -124,7 +124,7 @@ async def test_pool_connect_all_retries_fail(mock_pool):
 @pytest.mark.asyncio
 async def test_close_pool(mock_pool):
     """Test closing the connection pool."""
-    with patch("postgres_mcp.sql.sql_driver.AsyncConnectionPool", return_value=mock_pool):
+    with patch("pgscope.sql.sql_driver.AsyncConnectionPool", return_value=mock_pool):
         db_pool = DbConnPool("postgresql://user:pass@localhost/db")
 
         # Mock the pool_connect method to avoid actual connection
@@ -147,7 +147,7 @@ async def test_close_handles_errors(mock_pool):
     """Test that close() handles exceptions gracefully."""
     mock_pool.close.side_effect = Exception("Error closing pool")
 
-    with patch("postgres_mcp.sql.sql_driver.AsyncConnectionPool", return_value=mock_pool):
+    with patch("pgscope.sql.sql_driver.AsyncConnectionPool", return_value=mock_pool):
         db_pool = DbConnPool("postgresql://user:pass@localhost/db")
 
         # Mock the pool_connect method to avoid actual connection
@@ -167,7 +167,7 @@ async def test_close_handles_errors(mock_pool):
 @pytest.mark.asyncio
 async def test_pool_connect_initialized(mock_pool):
     """Test pool_connect when pool is already initialized."""
-    with patch("postgres_mcp.sql.sql_driver.AsyncConnectionPool", return_value=mock_pool):
+    with patch("pgscope.sql.sql_driver.AsyncConnectionPool", return_value=mock_pool):
         db_pool = DbConnPool("postgresql://user:pass@localhost/db")
 
         # Mock the pool_connect method to avoid actual connection
@@ -190,7 +190,7 @@ async def test_pool_connect_initialized(mock_pool):
 @pytest.mark.asyncio
 async def test_pool_connect_not_initialized(mock_pool):
     """Test pool_connect when pool is not yet initialized."""
-    with patch("postgres_mcp.sql.sql_driver.AsyncConnectionPool", return_value=mock_pool):
+    with patch("pgscope.sql.sql_driver.AsyncConnectionPool", return_value=mock_pool):
         db_pool = DbConnPool("postgresql://user:pass@localhost/db")
 
         # Mock the pool_connect method to avoid actual connection
@@ -238,7 +238,7 @@ def open_pool():
 @pytest.mark.asyncio
 async def test_pool_respects_configured_size(open_pool):
     """Configured min/max sizes reach AsyncConnectionPool."""
-    with patch("postgres_mcp.sql.sql_driver.AsyncConnectionPool", return_value=open_pool) as ctor:
+    with patch("pgscope.sql.sql_driver.AsyncConnectionPool", return_value=open_pool) as ctor:
         db_pool = DbConnPool("postgresql://user:pass@localhost/db", min_size=0, max_size=3)
         await db_pool.pool_connect()
 
@@ -249,7 +249,7 @@ async def test_pool_respects_configured_size(open_pool):
 @pytest.mark.asyncio
 async def test_legacy_pool_defaults_to_one_five(open_pool):
     """Legacy construction keeps min_size=1, max_size=5."""
-    with patch("postgres_mcp.sql.sql_driver.AsyncConnectionPool", return_value=open_pool) as ctor:
+    with patch("pgscope.sql.sql_driver.AsyncConnectionPool", return_value=open_pool) as ctor:
         db_pool = DbConnPool("postgresql://user:pass@localhost/db")
         await db_pool.pool_connect()
 
@@ -262,7 +262,7 @@ async def test_connection_failure_can_recover_for_same_pool(open_pool):
     """A failed open leaves the pool invalid, and a later pool_connect recovers on the same object."""
     open_pool.open.side_effect = [Exception("db down"), None]
 
-    with patch("postgres_mcp.sql.sql_driver.AsyncConnectionPool", return_value=open_pool):
+    with patch("pgscope.sql.sql_driver.AsyncConnectionPool", return_value=open_pool):
         db_pool = DbConnPool("postgresql://user:pass@localhost/db")
 
         with pytest.raises(ValueError, match="Connection attempt failed"):
@@ -309,7 +309,7 @@ async def test_concurrent_pool_connect_opens_one_pool():
         async def close(self):
             pass
 
-    with patch("postgres_mcp.sql.sql_driver.AsyncConnectionPool", FakePool):
+    with patch("pgscope.sql.sql_driver.AsyncConnectionPool", FakePool):
         pool = DbConnPool("postgresql://u:p@localhost/db")
         results = await asyncio.gather(*[pool.pool_connect() for _ in range(20)], return_exceptions=True)
 
@@ -333,7 +333,7 @@ async def test_queued_callers_reuse_failed_open(monkeypatch):
         async def close(self):
             pass
 
-    monkeypatch.setattr("postgres_mcp.sql.sql_driver.AsyncConnectionPool", FailingPool)
+    monkeypatch.setattr("pgscope.sql.sql_driver.AsyncConnectionPool", FailingPool)
     pool = DbConnPool("postgresql://u:p@localhost/db")
     results = await asyncio.gather(*[pool.pool_connect() for _ in range(10)], return_exceptions=True)
     assert len(attempts) == 1

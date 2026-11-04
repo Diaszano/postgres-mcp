@@ -1,4 +1,4 @@
-from postgres_mcp import main
+from pgscope import main
 
 if __name__ == "__main__":
     main()

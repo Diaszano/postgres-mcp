@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 import pytest_asyncio
 
-import postgres_mcp.server as server
+import pgscope.server as server
 from tests.type_helpers import text_at
 
 

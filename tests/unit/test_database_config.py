@@ -3,8 +3,8 @@ from dataclasses import replace
 import pytest
 from psycopg.conninfo import conninfo_to_dict
 
-from postgres_mcp.database_config import build_database_conninfo
-from postgres_mcp.database_config import parse_database_config
+from pgscope.database_config import build_database_conninfo
+from pgscope.database_config import parse_database_config
 
 URI = "postgresql://u:p@localhost/postgres"
 

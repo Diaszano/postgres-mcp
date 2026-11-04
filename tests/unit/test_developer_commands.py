@@ -9,7 +9,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_just_commands_reference_real_package():
-    """Verify justfile recipes exist and target the real postgres_mcp package."""
+    """Verify justfile recipes exist and target the real pgscope package."""
     justfile_path = REPO_ROOT / "justfile"
     assert justfile_path.exists(), "justfile must exist in repository root"
     content = justfile_path.read_text(encoding="utf-8")

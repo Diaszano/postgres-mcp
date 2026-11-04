@@ -1,7 +1,7 @@
 # PostgreSQL MCP Release Checklist & Rollback Procedure
 
 Base Version: (evaluated dynamically from `pyproject.toml`)
-Primary Image Registry: `ghcr.io/diaszano/postgres-mcp`
+Primary Image Registry: `ghcr.io/diaszano/pgscope`
 Release Automation: Python Semantic Release (PSR 10.7.0) via GitHub Actions
 
 ## Pre-Release Verification Checklist
@@ -35,7 +35,7 @@ Execute the following verification gates before tagging and publishing any relea
    - Multiarch images (`linux/amd64,linux/arm64`) are built with Docker Buildx and staged using immutable commit SHAs.
    - Container vulnerability scans run with Trivy (fail-closed on HIGH/CRITICAL CVEs).
    - Buildx is configured to generate provenance and SBOM for each image build; registry publication has not been verified.
-   - Verified staging digests are promoted to `vX.Y.Z`, `X.Y`, `X`, and `latest` tags on `ghcr.io/diaszano/postgres-mcp`.
+   - Verified staging digests are promoted to `vX.Y.Z`, `X.Y`, `X`, and `latest` tags on `ghcr.io/diaszano/pgscope`.
 
 ## Production Rollback & Emergency Backout Procedure
 
@@ -48,6 +48,6 @@ If regressions, unexpected query rejections, or client incompatibilities emerge 
 3. **In-Memory Store Isolation**:
    The cursor cache is strictly in-process and memory-bounded with zero external storage dependencies (no external cache services or broker daemons required). Restarting the container or process cleanly flushes active cursor state without persistent corruption.
 4. **Binary / Container Rollback**:
-   Re-deploy a previously verified image by digest (`ghcr.io/diaszano/postgres-mcp@sha256:<verified-release-digest>`; placeholder only) or a wheel from a verified GitHub Release. Do not assume a mutable tag or release artifact exists until verified.
+   Re-deploy a previously verified image by digest (`ghcr.io/diaszano/pgscope@sha256:<verified-release-digest>`; placeholder only) or a wheel from a verified GitHub Release. Do not assume a mutable tag or release artifact exists until verified.
 5. **Publish-Only Recovery**:
    If release publication fails midway (e.g., GitHub Release exists but container promotion timed out), trigger `.github/workflows/retry-publish.yml` with the validated release tag to safely republish without bumping versions.

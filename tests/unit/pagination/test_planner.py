@@ -5,8 +5,8 @@ from pglast import ast
 from pglast import parse_sql
 from pglast.ast import SelectStmt
 
-from postgres_mcp.pagination.eligibility import PageableQuery
-from postgres_mcp.pagination.planner import build_page_query
+from pgscope.pagination.eligibility import PageableQuery
+from pgscope.pagination.planner import build_page_query
 
 
 def test_offset_pages_progress_in_order():

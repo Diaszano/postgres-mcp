@@ -9,21 +9,21 @@ import pytest
 @pytest.mark.parametrize("transport", ["stdio", "sse", "streamable-http"])
 async def test_transport_argument_parsing(transport):
     """Test that all transport options are parsed correctly."""
-    from postgres_mcp.server import main
+    from pgscope.server import main
 
     original_argv = sys.argv
     try:
         sys.argv = [
-            "postgres_mcp",
+            "pgscope",
             "postgresql://user:password@localhost/db",
             f"--transport={transport}",
         ]
 
         with (
-            patch("postgres_mcp.server.db_connection.pool_connect", AsyncMock()),
-            patch("postgres_mcp.server.mcp.run_stdio_async", AsyncMock()) as mock_stdio,
-            patch("postgres_mcp.server.mcp.run_sse_async", AsyncMock()) as mock_sse,
-            patch("postgres_mcp.server.mcp.run_streamable_http_async", AsyncMock()) as mock_http,
+            patch("pgscope.server.db_connection.pool_connect", AsyncMock()),
+            patch("pgscope.server.mcp.run_stdio_async", AsyncMock()) as mock_stdio,
+            patch("pgscope.server.mcp.run_sse_async", AsyncMock()) as mock_sse,
+            patch("pgscope.server.mcp.run_streamable_http_async", AsyncMock()) as mock_http,
         ):
             await main()
 
@@ -47,13 +47,13 @@ async def test_transport_argument_parsing(transport):
 @pytest.mark.asyncio
 async def test_streamable_http_host_port_arguments():
     """Test that streamable-http host and port arguments are applied correctly."""
-    from postgres_mcp.server import main
-    from postgres_mcp.server import mcp
+    from pgscope.server import main
+    from pgscope.server import mcp
 
     original_argv = sys.argv
     try:
         sys.argv = [
-            "postgres_mcp",
+            "pgscope",
             "postgresql://user:password@localhost/db",
             "--transport=streamable-http",
             "--streamable-http-host=127.0.0.1",
@@ -61,8 +61,8 @@ async def test_streamable_http_host_port_arguments():
         ]
 
         with (
-            patch("postgres_mcp.server.db_connection.pool_connect", AsyncMock()),
-            patch("postgres_mcp.server.mcp.run_streamable_http_async", AsyncMock()),
+            patch("pgscope.server.db_connection.pool_connect", AsyncMock()),
+            patch("pgscope.server.mcp.run_streamable_http_async", AsyncMock()),
         ):
             await main()
 
@@ -76,13 +76,13 @@ async def test_streamable_http_host_port_arguments():
 @pytest.mark.asyncio
 async def test_sse_host_port_arguments():
     """Test that SSE host and port arguments are applied correctly."""
-    from postgres_mcp.server import main
-    from postgres_mcp.server import mcp
+    from pgscope.server import main
+    from pgscope.server import mcp
 
     original_argv = sys.argv
     try:
         sys.argv = [
-            "postgres_mcp",
+            "pgscope",
             "postgresql://user:password@localhost/db",
             "--transport=sse",
             "--sse-host=127.0.0.1",
@@ -90,8 +90,8 @@ async def test_sse_host_port_arguments():
         ]
 
         with (
-            patch("postgres_mcp.server.db_connection.pool_connect", AsyncMock()),
-            patch("postgres_mcp.server.mcp.run_sse_async", AsyncMock()),
+            patch("pgscope.server.db_connection.pool_connect", AsyncMock()),
+            patch("pgscope.server.mcp.run_sse_async", AsyncMock()),
         ):
             await main()
 
@@ -105,20 +105,20 @@ async def test_sse_host_port_arguments():
 @pytest.mark.asyncio
 async def test_default_transport_is_stdio():
     """Test that the default transport is stdio when not specified."""
-    from postgres_mcp.server import main
+    from pgscope.server import main
 
     original_argv = sys.argv
     try:
         sys.argv = [
-            "postgres_mcp",
+            "pgscope",
             "postgresql://user:password@localhost/db",
         ]
 
         with (
-            patch("postgres_mcp.server.db_connection.pool_connect", AsyncMock()),
-            patch("postgres_mcp.server.mcp.run_stdio_async", AsyncMock()) as mock_stdio,
-            patch("postgres_mcp.server.mcp.run_sse_async", AsyncMock()) as mock_sse,
-            patch("postgres_mcp.server.mcp.run_streamable_http_async", AsyncMock()) as mock_http,
+            patch("pgscope.server.db_connection.pool_connect", AsyncMock()),
+            patch("pgscope.server.mcp.run_stdio_async", AsyncMock()) as mock_stdio,
+            patch("pgscope.server.mcp.run_sse_async", AsyncMock()) as mock_sse,
+            patch("pgscope.server.mcp.run_streamable_http_async", AsyncMock()) as mock_http,
         ):
             await main()
 
@@ -137,9 +137,9 @@ async def test_default_transport_is_stdio():
 @pytest.mark.parametrize("fails", [False, True])
 async def test_transport_finally_closes_registry(monkeypatch, transport, runner, fails):
     """Discovery mode closes the registry after every transport, even when it raises."""
-    from postgres_mcp import server
+    from pgscope import server
 
-    monkeypatch.setattr(sys, "argv", ["postgres_mcp", f"--transport={transport}"])
+    monkeypatch.setattr(sys, "argv", ["pgscope", f"--transport={transport}"])
     monkeypatch.setenv("DATABASE_URI", "postgresql://user:password@localhost/db")
     monkeypatch.setenv("DATABASE_AUTO_DISCOVER", "true")
     monkeypatch.setattr(server, "registry", None)
@@ -149,8 +149,8 @@ async def test_transport_finally_closes_registry(monkeypatch, transport, runner,
     run = AsyncMock(side_effect=RuntimeError("transport down") if fails else None)
     with (
         patch.object(server.mcp, runner, run),
-        patch("postgres_mcp.server.DatabaseRegistry.start", AsyncMock()),
-        patch("postgres_mcp.server.DatabaseRegistry.close_all", AsyncMock()) as close_all,
+        patch("pgscope.server.DatabaseRegistry.start", AsyncMock()),
+        patch("pgscope.server.DatabaseRegistry.close_all", AsyncMock()) as close_all,
     ):
         if fails:
             with pytest.raises(RuntimeError, match="transport down"):

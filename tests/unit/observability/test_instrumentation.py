@@ -3,14 +3,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from postgres_mcp.application.query_service import QueryExecutionService
-from postgres_mcp.database_config import parse_database_config
-from postgres_mcp.observability.metrics import SimpleMetrics
-from postgres_mcp.pagination.cursors import InMemoryCursorStore
-from postgres_mcp.query_limits.policy import QueryLimits
-from postgres_mcp.query_limits.results import BoundedQueryResult
-from postgres_mcp.sql.database_catalog import DatabaseCatalog
-from postgres_mcp.sql.database_registry import DatabaseRegistry
+from pgscope.application.query_service import QueryExecutionService
+from pgscope.database_config import parse_database_config
+from pgscope.observability.metrics import SimpleMetrics
+from pgscope.pagination.cursors import InMemoryCursorStore
+from pgscope.query_limits.policy import QueryLimits
+from pgscope.query_limits.results import BoundedQueryResult
+from pgscope.sql.database_catalog import DatabaseCatalog
+from pgscope.sql.database_registry import DatabaseRegistry
 
 
 @pytest.mark.asyncio

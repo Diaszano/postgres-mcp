@@ -1,6 +1,6 @@
-from postgres_mcp.observability.metrics import NoopMetrics
-from postgres_mcp.observability.metrics import SimpleMetrics
-from postgres_mcp.observability.metrics import get_metrics_sink
+from pgscope.observability.metrics import NoopMetrics
+from pgscope.observability.metrics import SimpleMetrics
+from pgscope.observability.metrics import get_metrics_sink
 
 
 def test_noop_metrics_by_default():

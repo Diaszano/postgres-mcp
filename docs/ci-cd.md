@@ -1,6 +1,6 @@
 # CI/CD and Automated Release Architecture Guide
 
-This document describes the automated continuous integration and delivery architecture for the **Postgres MCP Server**.
+This document describes the automated continuous integration and delivery architecture for the **pgscope** server.
 
 ## 1. Pipeline Overview
 
@@ -32,14 +32,14 @@ The project uses GitHub Actions workflows for continuous validation and zero-man
 [Multiarch GHCR Staging & Delivery]
        ├── Docker Buildx & QEMU (linux/amd64, linux/arm64)
        ├── Generate SLSA Provenance & SBOM (SPDX)
-       ├── Stage immutable image: ghcr.io/diaszano/postgres-mcp:sha-<commit-sha>
+       ├── Stage immutable image: ghcr.io/diaszano/pgscope:sha-<commit-sha>
        ├── Fail-closed vulnerability scan (Trivy HIGH/CRITICAL exit 1)
        └── Promote immutable digest to stable SemVer aliases:
-           - ghcr.io/diaszano/postgres-mcp:vX.Y.Z
-           - ghcr.io/diaszano/postgres-mcp:X.Y.Z
-           - ghcr.io/diaszano/postgres-mcp:X.Y
-           - ghcr.io/diaszano/postgres-mcp:X
-           - ghcr.io/diaszano/postgres-mcp:latest
+           - ghcr.io/diaszano/pgscope:vX.Y.Z
+           - ghcr.io/diaszano/pgscope:X.Y.Z
+           - ghcr.io/diaszano/pgscope:X.Y
+           - ghcr.io/diaszano/pgscope:X
+           - ghcr.io/diaszano/pgscope:latest
 ```
 
 ## 2. Dependency Management & Versioning Invariants
@@ -54,11 +54,11 @@ Users and orchestrators should deploy images using immutable content digests:
 
 ```bash
 # Replace the placeholder with the digest verified for your deployment:
-docker pull ghcr.io/diaszano/postgres-mcp@sha256:<verified-digest>
+docker pull ghcr.io/diaszano/pgscope@sha256:<verified-digest>
 
 # Run container
 docker run -it --rm \
-  ghcr.io/diaszano/postgres-mcp@sha256:<verified-digest> \
+  ghcr.io/diaszano/pgscope@sha256:<verified-digest> \
   postgres://mcp_agent:password@localhost:5432/mydb
 ```
 

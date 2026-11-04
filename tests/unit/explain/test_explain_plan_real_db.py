@@ -3,10 +3,10 @@ import logging
 
 import pytest
 
-from postgres_mcp.artifacts import ErrorResult
-from postgres_mcp.artifacts import ExplainPlanArtifact
-from postgres_mcp.explain import ExplainPlanTool
-from postgres_mcp.sql import SqlDriver
+from pgscope.artifacts import ErrorResult
+from pgscope.artifacts import ExplainPlanArtifact
+from pgscope.explain import ExplainPlanTool
+from pgscope.sql import SqlDriver
 
 logger = logging.getLogger(__name__)
 

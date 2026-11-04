@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from postgres_mcp.pagination.cursors import InMemoryCursorStore
-from postgres_mcp.server import mcp
+from pgscope.pagination.cursors import InMemoryCursorStore
+from pgscope.server import mcp
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 

@@ -9,14 +9,14 @@ from threading import Barrier
 
 import pytest
 
-from postgres_mcp.pagination.eligibility import PageableQuery
-from postgres_mcp.security.errors import PublicToolError
+from pgscope.pagination.eligibility import PageableQuery
+from pgscope.security.errors import PublicToolError
 
 
 @pytest.fixture
 def cursors():
-    assert importlib.util.find_spec("postgres_mcp.pagination.cursors") is not None, "The cursor store contract is not implemented"
-    return importlib.import_module("postgres_mcp.pagination.cursors")
+    assert importlib.util.find_spec("pgscope.pagination.cursors") is not None, "The cursor store contract is not implemented"
+    return importlib.import_module("pgscope.pagination.cursors")
 
 
 @pytest.fixture
@@ -39,8 +39,8 @@ def state(cursors):
 
 
 def test_token_is_opaque_and_random(monkeypatch):
-    assert importlib.util.find_spec("postgres_mcp.pagination.cursors") is not None, "The cursor store contract is not implemented"
-    cursors = importlib.import_module("postgres_mcp.pagination.cursors")
+    assert importlib.util.find_spec("pgscope.pagination.cursors") is not None, "The cursor store contract is not implemented"
+    cursors = importlib.import_module("pgscope.pagination.cursors")
     state = cursors.CursorState(
         query=PageableQuery("SELECT id FROM private_items ORDER BY id", "id"),
         database="private_database",

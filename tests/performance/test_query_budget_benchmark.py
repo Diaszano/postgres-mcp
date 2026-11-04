@@ -3,10 +3,10 @@ import tracemalloc
 
 import pytest
 
-from postgres_mcp.observability.metrics import NoopMetrics
-from postgres_mcp.observability.metrics import SimpleMetrics
-from postgres_mcp.query_limits.results import BoundedQueryResult
-from postgres_mcp.query_limits.results import encode_bounded_result
+from pgscope.observability.metrics import NoopMetrics
+from pgscope.observability.metrics import SimpleMetrics
+from pgscope.query_limits.results import BoundedQueryResult
+from pgscope.query_limits.results import encode_bounded_result
 
 
 @pytest.mark.performance

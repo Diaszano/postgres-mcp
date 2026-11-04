@@ -10,15 +10,15 @@ from mcp.server.fastmcp.tools import Tool
 from mcp.types import CallToolResult
 from psycopg.errors import QueryCanceled
 
-import postgres_mcp.server as server
-from postgres_mcp.query_limits.admission import QueryAdmission
-from postgres_mcp.query_limits.admission import remaining_query_seconds
-from postgres_mcp.query_limits.config import QueryBudgetConfig
-from postgres_mcp.query_limits.results import BoundedQueryResult
-from postgres_mcp.query_limits.results import encode_bounded_result
-from postgres_mcp.security.errors import to_public_error
-from postgres_mcp.sql import SafeSqlDriver
-from postgres_mcp.sql import SqlDriver
+import pgscope.server as server
+from pgscope.query_limits.admission import QueryAdmission
+from pgscope.query_limits.admission import remaining_query_seconds
+from pgscope.query_limits.config import QueryBudgetConfig
+from pgscope.query_limits.results import BoundedQueryResult
+from pgscope.query_limits.results import encode_bounded_result
+from pgscope.security.errors import to_public_error
+from pgscope.sql import SafeSqlDriver
+from pgscope.sql import SqlDriver
 from tests.type_helpers import text_at
 
 
@@ -230,7 +230,7 @@ async def test_confirmed_query_timeout_maps_public_code(monkeypatch, enabled):
 
 @pytest.mark.asyncio
 async def test_deadline_covers_serialization(monkeypatch, guarded):
-    from postgres_mcp.query_limits.results import encode_bounded_result
+    from pgscope.query_limits.results import encode_bounded_result
 
     driver = AsyncMock(spec=SqlDriver)
     driver.execute_bounded_query.return_value = result()

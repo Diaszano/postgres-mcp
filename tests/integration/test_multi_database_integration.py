@@ -11,12 +11,12 @@ import pytest
 import pytest_asyncio
 from psycopg import sql
 
-from postgres_mcp import server
-from postgres_mcp.database_config import parse_database_config
-from postgres_mcp.sql import reset_postgres_version_cache
-from postgres_mcp.sql.database_catalog import DatabaseCatalog
-from postgres_mcp.sql.database_catalog import discover_postgres_databases
-from postgres_mcp.sql.database_registry import DatabaseRegistry
+from pgscope import server
+from pgscope.database_config import parse_database_config
+from pgscope.sql import reset_postgres_version_cache
+from pgscope.sql.database_catalog import DatabaseCatalog
+from pgscope.sql.database_catalog import discover_postgres_databases
+from pgscope.sql.database_registry import DatabaseRegistry
 from tests.type_helpers import text_at
 
 pytestmark = pytest.mark.asyncio

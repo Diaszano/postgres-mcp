@@ -22,11 +22,11 @@ from dataclasses import dataclass
 from dataclasses import field
 from typing import Literal
 
-from postgres_mcp.database_config import DatabaseConfig
-from postgres_mcp.database_config import build_database_conninfo
-from postgres_mcp.observability.metrics import MetricsSink
-from postgres_mcp.observability.metrics import NoopMetrics
-from postgres_mcp.security.errors import DatabaseNotAllowedError
+from pgscope.database_config import DatabaseConfig
+from pgscope.database_config import build_database_conninfo
+from pgscope.observability.metrics import MetricsSink
+from pgscope.observability.metrics import NoopMetrics
+from pgscope.security.errors import DatabaseNotAllowedError
 
 from .database_catalog import DatabaseCatalog
 from .database_catalog import DiscoveryUnavailableError

@@ -1,11 +1,11 @@
 name: Feature Request
-description: Propose a new feature or enhancement for postgres-mcp
+description: Propose a new feature or enhancement for pgscope
 labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
       value: |
-        Suggesting an enhancement helps make postgres-mcp better!
+        Suggesting an enhancement helps make pgscope better!
   - type: textarea
     id: problem
     attributes:

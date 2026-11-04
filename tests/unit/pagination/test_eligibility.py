@@ -4,10 +4,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from postgres_mcp.pagination.eligibility import inspect_pageable_select
-from postgres_mcp.security.errors import SQLValidationError
-from postgres_mcp.sql import SafeSqlDriver
-from postgres_mcp.sql import SqlDriver
+from pgscope.pagination.eligibility import inspect_pageable_select
+from pgscope.security.errors import SQLValidationError
+from pgscope.sql import SafeSqlDriver
+from pgscope.sql import SqlDriver
 
 
 async def inspect(sql, driver, mode: Literal["offset", "keyset", "other"] = "keyset"):

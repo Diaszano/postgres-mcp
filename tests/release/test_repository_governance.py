@@ -31,7 +31,7 @@ def test_upstream_credit_preserved() -> None:
     notice_content = notice_path.read_text(encoding="utf-8")
     assert "Crystal Corp." in notice_content, "NOTICE.md must attribute original Crystal Corp. authorship"
     assert "Johann Schleier-Smith" in notice_content, "NOTICE.md must credit Johann Schleier-Smith"
-    assert "postgres-mcp" in notice_content, "NOTICE.md must reference postgres-mcp"
+    assert "pgscope" in notice_content, "NOTICE.md must reference pgscope"
 
 
 def test_contributing_defines_conventions_and_merge_policy() -> None:
@@ -53,8 +53,8 @@ def test_readme_docker_commands_build_the_local_image() -> None:
     readme_pt = (root / "README.pt-BR.md").read_text(encoding="utf-8")
 
     for readme, lang in [(readme_en, "README.md"), (readme_pt, "README.pt-BR.md")]:
-        assert "docker build -t postgres-mcp:latest ." in readme, f"{lang} must document building the local image"
-        assert "ghcr.io/diaszano/postgres-mcp" not in readme, f"{lang} must not present an unverified GHCR image"
+        assert "docker build -t pgscope:latest ." in readme, f"{lang} must document building the local image"
+        assert "ghcr.io/diaszano/pgscope" not in readme, f"{lang} must not present an unverified GHCR image"
         assert "docker pull crystaldba/postgres-mcp" not in readme, f"{lang} must not reference docker pull crystaldba/postgres-mcp"
 
 

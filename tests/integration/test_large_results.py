@@ -2,7 +2,7 @@ import time
 
 import pytest
 
-from postgres_mcp.sql.sql_driver import SqlDriver
+from pgscope.sql.sql_driver import SqlDriver
 
 
 @pytest.mark.asyncio

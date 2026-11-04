@@ -13,7 +13,7 @@ Baseline captured on 2026-11-03 from local commit `cdb81019c61a2cb1f1590e4b42af7
 | Local tools | Partial | Host default: Python 3.15.2; `uv` 0.13.7 installed from Astral's installer after no executable was found in PATH or standard local install paths. `uv` selected CPython 3.12.3 for this project. Docker 29.1.3 client and daemon respond. `gh auth status` confirmed an active account; token values were not recorded. | Run the disposable PostgreSQL and container flows in Task 2. |
 | Repository and merge settings | Verified remotely | GitHub metadata: public, active, default branch `main`; squash, merge and rebase are enabled; auto-merge is enabled. Only `Diaszano` appears in the collaborator list and has admin permission. | Align repository proposal with a single active collaborator in Task 7. |
 | Branch protection | Verified absent for `main` | GitHub rulesets endpoint returned `[]`; `gh api .../branches/main/protection` returned 404 `Branch not protected`. | Propose concrete settings in Task 7; do not apply them during this work. |
-| Checks and recent runs | Mixed | Latest `main` commit had seven completed Dependabot checks (six `Dependabot`, one `.github/dependabot.yml`), all successful. The 10 most recent Actions runs were CI pushes from Dependabot branches and all were completed with failure; example: [run 41661206742](https://github.com/Diaszano/postgres-mcp/actions/runs/41661206742). | Inspect failure causes while handling CI/release tasks; don't infer that all CI runs fail from this sample alone. |
+| Checks and recent runs | Mixed | Latest `main` commit had seven completed Dependabot checks (six `Dependabot`, one `.github/dependabot.yml`), all successful. The 10 most recent Actions runs were CI pushes from Dependabot branches and all were completed with failure; example: [run 41661206742](https://github.com/Diaszano/pgscope/actions/runs/41661206742). | Inspect failure causes while handling CI/release tasks; don't infer that all CI runs fail from this sample alone. |
 | Releases and GHCR | Pending | Releases API returned an empty list. GHCR package listing failed with 403 because the active credential lacks `read:packages`; package existence, visibility and manifests remain unknown. | Verify GHCR through an authorized read path in Task 7/8; do not assume a published image. |
 
 ## Prioritized findings
@@ -33,20 +33,20 @@ Baseline captured on 2026-11-03 from local commit `cdb81019c61a2cb1f1590e4b42af7
 ## Task 2 verification
 
 - The install blocker was a `pglast` 7.11 source archive missing `postgres_deparse.h`. This repository now uses `pglast==7.22` from PyPI and no longer pins the broken direct source URL. The upstream changelog documents the missing-header fix in 7.17; the project's `pglast` v7 line targets PostgreSQL 17. See [pglast changes](https://github.com/lelit/pglast/blob/v8/CHANGES.rst) and [pglast project](https://github.com/lelit/pglast).
-- `uv run ruff check .` and `uv run ruff format --check .` now run with the project environment. `uvx --from . postgres-mcp --help` succeeds.
+- `uv run ruff check .` and `uv run ruff format --check .` now run with the project environment. `uvx --from . pgscope --help` succeeds.
 - `uv run pyright` runs but exits 1 with 292 diagnostics across 34 files: 35 in four source files and 257 in 30 test files. Most repeat a few categories (MCP content union typing, test mocks, optional AST fields, and protected test access). No runtime defect was demonstrated from those diagnostics, and the existing behavioral suites exercise the affected paths; broad annotation cleanup or suppressions are outside Task 3's evidence-based scope. Pyright remains a known failing check for Task 8.
 - Wheel smoke, run from the repository root:
 
   ```bash
   uv build
-  wheel_test=$(mktemp -d /tmp/postgres-mcp-wheel.XXXXXX)
+  wheel_test=$(mktemp -d /tmp/pgscope-wheel.XXXXXX)
   uv venv --python 3.12 "$wheel_test/venv"
-  uv pip install --python "$wheel_test/venv/bin/python" "$PWD/dist/postgres_mcp-0.3.0-py3-none-any.whl"
-  (cd "$wheel_test" && "$wheel_test/venv/bin/postgres-mcp" --help && "$wheel_test/venv/bin/python" -c 'import importlib.metadata, pathlib, postgres_mcp; print(importlib.metadata.version("postgres-mcp")); print(pathlib.Path(postgres_mcp.__file__).resolve())')
+  uv pip install --python "$wheel_test/venv/bin/python" "$PWD/dist/pgscope-0.3.0-py3-none-any.whl"
+  (cd "$wheel_test" && "$wheel_test/venv/bin/pgscope" --help && "$wheel_test/venv/bin/python" -c 'import importlib.metadata, pathlib, pgscope; print(importlib.metadata.version("pgscope")); print(pathlib.Path(pgscope.__file__).resolve())')
   ```
 
   Result: help exits 0, version is `0.3.0`, and the module path is under the temporary venv's `site-packages`.
-- The first local Docker build failed because `.dockerignore` excluded the `README.md` required by package metadata. The ignore list now re-includes `README.md`; `docker build --tag postgres-mcp:readiness --build-arg REVISION=local-readiness .` and `docker run --rm postgres-mcp:readiness --help` both exit 0. No image was pushed.
+- The first local Docker build failed because `.dockerignore` excluded the `README.md` required by package metadata. The ignore list now re-includes `README.md`; `docker build --tag pgscope:readiness --build-arg REVISION=local-readiness .` and `docker run --rm pgscope:readiness --help` both exit 0. No image was pushed.
 - `bash scripts/ci/build_hypopg_image.sh 16` built and verified the disposable PostgreSQL 16 image. `uv run pytest -q tests/integration/test_mcp_result_wire.py tests/integration/test_restricted_security.py` passed 15 tests; this includes a real MCP client session against the disposable database, tool discovery, a permitted SELECT, a blocked INSERT, and an error response with no password.
 - `uv run pytest -q tests/unit/test_documentation_contract.py tests/release/test_smoke.py` passed 8 tests. `uv run pytest -q tests/unit/test_query_service.py tests/unit/sql/test_safe_sql.py tests/unit/security/test_sql_policy.py tests/unit/test_mcp_response.py tests/unit/test_error_contract.py` passed 143 tests.
 - The wire test initially exposed that FastMCP rejected the server's structured error against the inferred list output schema. `format_error_response` now includes the expected `result` content alongside its structured error; success output and tool signatures remain unchanged. The regression passed after this correction.
@@ -84,7 +84,7 @@ Baseline captured on 2026-11-03 from local commit `cdb81019c61a2cb1f1590e4b42af7
 
 ## Task 7 verification
 
-- Re-read remote Actions runs and check-runs on 2026-11-03. The latest `main` CI run was [41660883533](https://github.com/Diaszano/postgres-mcp/actions/runs/41660883533); it failed before emitting any job entries. Its commit's visible checks were six Dependabot checks and `.github/dependabot.yml`, all successful. Therefore no successful CI status context was available to confirm exact check-run display names. `docs/github-settings.md` gives the workflow-declared job names as proposed contexts and requires confirming them on a successful run before enforcing them.
+- Re-read remote Actions runs and check-runs on 2026-11-03. The latest `main` CI run was [41660883533](https://github.com/Diaszano/pgscope/actions/runs/41660883533); it failed before emitting any job entries. Its commit's visible checks were six Dependabot checks and `.github/dependabot.yml`, all successful. Therefore no successful CI status context was available to confirm exact check-run display names. `docs/github-settings.md` gives the workflow-declared job names as proposed contexts and requires confirming them on a successful run before enforcing them.
 - GitHub ruleset documentation lists GitHub Apps among eligible bypass actors. Repository-specific availability of the built-in GitHub Actions app was not verified, so the PR ruleset is explicitly held in Evaluate until that exact bypass is verified or the release flow changes. No commit-message bypass or new credential is proposed.
 - Governance docs now account for the sole observed admin, distinguish CODEOWNERS routing from enforced independent approval, and mark GHCR package access/publication as unverified. Release rollback digests are explicitly labeled placeholders. `SECURITY.md`, the PR template, CI/CD guide, release checklist, and plans index were reconciled to the changes in Tasks 2–6.
 - Required Task 7 command: `uv run pytest -q tests/release/test_github_settings.py tests/release/test_release_docs.py tests/release/test_repository_governance.py tests/release/test_repository_conventions.py tests/unit/test_documentation_contract.py` — 26 passed.
@@ -102,8 +102,8 @@ Implementation verification was run from committed code at `b6ba76eca4251a19f1da
 | Package build | `uv build` | Passed; built sdist and wheel for 0.3.0. |
 | PostgreSQL 16 integration | `bash scripts/ci/build_hypopg_image.sh 16`; `MULTIDB_PG_IMAGE=postgres-hypopg:16 uv run pytest -q tests/integration` | Image and HypoPG activation passed; 86 passed, 18 skipped, 1 xfailed. |
 | PostgreSQL 17 integration | `bash scripts/ci/build_hypopg_image.sh 17`; `MULTIDB_PG_IMAGE=postgres-hypopg:17 uv run pytest -q -rs tests/integration` | Image and HypoPG activation passed; 86 passed, 18 skipped, 1 xfailed. All skips were DTA cases with no generated recommendations or explicitly deferred scenarios. |
-| Wheel smoke | Install built wheel into a clean Python 3.12 venv; run `postgres-mcp --help`; inspect module path and package metadata | Passed; version 0.3.0, module loaded from the temporary venv's `site-packages`. |
-| Container smoke | `docker build --tag postgres-mcp:readiness-final --build-arg REVISION=readiness-final --build-arg VERSION=0.3.0 .`; `docker run --rm postgres-mcp:readiness-final --help`; inspect OCI version label | Passed; help returned successfully and label is 0.3.0. No image was pushed. |
+| Wheel smoke | Install built wheel into a clean Python 3.12 venv; run `pgscope --help`; inspect module path and package metadata | Passed; version 0.3.0, module loaded from the temporary venv's `site-packages`. |
+| Container smoke | `docker build --tag pgscope:readiness-final --build-arg REVISION=readiness-final --build-arg VERSION=0.3.0 .`; `docker run --rm pgscope:readiness-final --help`; inspect OCI version label | Passed; help returned successfully and label is 0.3.0. No image was pushed. |
 | Diff hygiene | `git diff --check` | Passed. |
 
 
@@ -111,6 +111,6 @@ The independent final review confirmed a readiness blocker: `.github/workflows/c
 
 ### Remote status and pending work
 
-- **Validated on GitHub:** Repository metadata, branch protection/rulesets, collaborator permission, check runs, releases, and recent Actions runs were inspected on 2026-11-03. `main` is unprotected; the only observed collaborator has admin access. The latest CI run failed before creating jobs, so successful CI check-context names remain unconfirmed. The [latest `main` CI run](https://github.com/Diaszano/postgres-mcp/actions/runs/41660883533) is recorded above. GitHub releases API returned an empty list.
+- **Validated on GitHub:** Repository metadata, branch protection/rulesets, collaborator permission, check runs, releases, and recent Actions runs were inspected on 2026-11-03. `main` is unprotected; the only observed collaborator has admin access. The latest CI run failed before creating jobs, so successful CI check-context names remain unconfirmed. The [latest `main` CI run](https://github.com/Diaszano/pgscope/actions/runs/41660883533) is recorded above. GitHub releases API returned an empty list.
 - **Pending access/remote verification:** GHCR package existence, visibility, Actions write permission, manifests, digests, and attestations; private vulnerability reporting availability; whether the built-in GitHub Actions app can be selected as a ruleset bypass actor; and exact status-check display names from a successful run.
 - **Not applied:** No branch/tag rules, merge settings, GHCR settings, release, image promotion, or publication were changed. The settings guide is a proposal for owner review. Do not declare end-to-end CD validated until the release and registry path has succeeded remotely.

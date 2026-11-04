@@ -7,14 +7,14 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from postgres_mcp.database_config import DatabaseConfig
-from postgres_mcp.security.errors import DatabaseNotAllowedError
-from postgres_mcp.sql import DatabaseInfo
-from postgres_mcp.sql import DatabaseRegistry
-from postgres_mcp.sql import DatabaseUnavailableError
-from postgres_mcp.sql import PoolCapacityError
-from postgres_mcp.sql.database_catalog import DatabaseCatalog
-from postgres_mcp.sql.database_catalog import DatabaseConfigurationError
+from pgscope.database_config import DatabaseConfig
+from pgscope.security.errors import DatabaseNotAllowedError
+from pgscope.sql import DatabaseInfo
+from pgscope.sql import DatabaseRegistry
+from pgscope.sql import DatabaseUnavailableError
+from pgscope.sql import PoolCapacityError
+from pgscope.sql.database_catalog import DatabaseCatalog
+from pgscope.sql.database_catalog import DatabaseConfigurationError
 
 URI = "postgresql://dev:s3cret@localhost:5432/postgres"
 NAMES = {"postgres", "app_testing", "app_development", "app_bad"}
