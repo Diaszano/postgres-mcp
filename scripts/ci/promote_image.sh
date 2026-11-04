@@ -45,7 +45,7 @@ inspect_digest() {
     return 0
   fi
 
-  if [[ "${output,,}" == *"manifest unknown"* || "${output,,}" =~ reference\ .+\ not\ found ]]; then
+  if [[ "${output,,}" == *"manifest unknown"* || "${output,,}" == *"not found"* || "${output,,}" =~ reference\ .+\ not\ found ]]; then
     return 1
   fi
   echo "Error: Could not inspect ${ref}: ${output}" >&2

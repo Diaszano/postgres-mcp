@@ -59,7 +59,8 @@ def _fake_tools(tmp_path: Path) -> tuple[Path, Path, Path]:
         "    elif ref in manifests:\n"
         "        print('Digest: ' + manifests[ref])\n"
         "    else:\n"
-        "        print('ERROR: manifest unknown', file=sys.stderr); sys.exit(1)\n"
+        "        msg = os.environ.get('NOT_FOUND_MSG', 'ERROR: manifest unknown')\n"
+        "        print(msg.replace('{ref}', ref), file=sys.stderr); sys.exit(1)\n"
         "elif args[:3] == ['buildx', 'imagetools', 'create']:\n"
         "    if os.environ.get('PROMOTE_ERROR'):\n"
         "        print('promotion failed', file=sys.stderr); sys.exit(1)\n"
@@ -90,6 +91,7 @@ def _run_promotion(
     trivy_fail_platform: str = "",
     include_trivy: bool = True,
     inspect_error: str = "",
+    not_found_msg: str = "",
 ) -> tuple[subprocess.CompletedProcess[str], list[list[str]], str]:
     root = Path(__file__).resolve().parents[2]
     bin_dir, docker_log, trivy_log = _fake_tools(tmp_path)
@@ -104,8 +106,11 @@ def _run_promotion(
         "VERSIONS": json.dumps(versions or {}),
         "TRIVY_FAIL_PLATFORM": trivy_fail_platform,
         "INSPECT_ERROR": inspect_error,
+        "NOT_FOUND_MSG": not_found_msg or "ERROR: manifest unknown",
     }
-    result = subprocess.run([str(root / "scripts/ci/promote_image.sh"), repository, digest, tag], cwd=root, env=env, capture_output=True, text=True)
+    result = subprocess.run(
+        ["bash", str(root / "scripts/ci/promote_image.sh"), repository, digest, tag], cwd=root, env=env, capture_output=True, text=True
+    )
     docker_calls = [json.loads(line) for line in docker_log.read_text(encoding="utf-8").splitlines()] if docker_log.exists() else []
     trivy_calls = trivy_log.read_text(encoding="utf-8") if trivy_log.exists() else ""
     return result, docker_calls, trivy_calls
@@ -134,6 +139,15 @@ def test_promote_image_calculates_aliases(tmp_path: Path) -> None:
     ]
     assert "--platform linux/amd64" in trivy_calls
     assert "--platform linux/arm64" in trivy_calls
+
+
+def test_promote_image_handles_ghcr_not_found_format(tmp_path: Path) -> None:
+    result, calls, _ = _run_promotion(
+        tmp_path,
+        not_found_msg="ERROR: {ref}: not found",
+    )
+    assert result.returncode == 0, result.stderr
+    assert any(call[:3] == ["buildx", "imagetools", "create"] for call in calls)
 
 
 @pytest.mark.parametrize(
