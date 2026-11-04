@@ -40,7 +40,7 @@ TEMP_DIST="${WORK_DIR}/bin"
 mkdir -p "${TEMP_DIST}"
 
 # Compile standalone executable with PyInstaller
-BUILD_CMD=(uv run --with pyinstaller pyinstaller \
+uv run --with pyinstaller pyinstaller \
   --onefile \
   --name postgres-mcp \
   --collect-all postgres_mcp \
@@ -53,14 +53,7 @@ BUILD_CMD=(uv run --with pyinstaller pyinstaller \
   --distpath "${TEMP_DIST}" \
   --workpath "${WORK_DIR}/build" \
   --specpath "${WORK_DIR}" \
-  "${REPO_ROOT}/src/postgres_mcp/__main__.py")
-
-if [[ "${TARGET_OS}" == "darwin" && "${TARGET_ARCH}" == "amd64" && "$(uname -m)" != "x86_64" ]]; then
-  echo "==> Running under Rosetta 2 emulation for darwin_amd64"
-  arch -x86_64 "${BUILD_CMD[@]}"
-else
-  "${BUILD_CMD[@]}"
-fi
+  "${REPO_ROOT}/src/postgres_mcp/__main__.py"
 
 # Package into .tar.gz archive
 ARCHIVE_NAME="postgres-mcp_${VERSION}_${TARGET_OS}_${TARGET_ARCH}.tar.gz"
