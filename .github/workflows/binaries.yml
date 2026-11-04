@@ -49,8 +49,11 @@ jobs:
 
       - name: Build standalone binary
         env:
-          VERSION: ${{ github.event.release.tag_name && replace(github.event.release.tag_name, 'v', '') || '' }}
+          TAG_NAME: ${{ github.event.release.tag_name || inputs.tag || '' }}
         run: |
+          if [[ -n "${TAG_NAME}" ]]; then
+            export VERSION="${TAG_NAME#v}"
+          fi
           bash scripts/release/build_binary.sh "${{ matrix.target_os }}" "${{ matrix.target_arch }}" "dist"
 
       - name: Upload binaries to GitHub Release
