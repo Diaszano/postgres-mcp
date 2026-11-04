@@ -7,7 +7,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from scripts.ci.check_version import check_package_version, get_pyproject_version
+from scripts.ci.check_version import check_package_version
+from scripts.ci.check_version import get_pyproject_version
 
 
 def test_ci_has_required_quality_gates() -> None:
