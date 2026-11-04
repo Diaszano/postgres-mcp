@@ -65,10 +65,7 @@ def create_postgres_container(version: str) -> Generator[Tuple[str, str], None, 
         driver=None,
     )
     container.with_command(
-        "-c shared_preload_libraries=pg_stat_statements "
-        "-c pg_stat_statements.track=all "
-        "-c log_min_messages=info "
-        "-c log_statement=all"
+        "-c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all -c log_min_messages=info -c log_statement=all"
     )
     container.with_env("POSTGRES_HOST_AUTH_METHOD", "trust")
 
