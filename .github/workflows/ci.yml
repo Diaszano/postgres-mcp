@@ -122,8 +122,8 @@ jobs:
       - name: Run Unit and Release test suites
         env:
           NO_PROXY: "*"
-          no_proxy: "*"
         run: |
+          export no_proxy="*"
           uv run pytest -q tests/unit tests/release
 
   package:
@@ -194,8 +194,8 @@ jobs:
         env:
           MULTIDB_PG_IMAGE: "postgres-hypopg:${{ matrix.postgres-version }}"
           NO_PROXY: "*"
-          no_proxy: "*"
         run: |
+          export no_proxy="*"
           uv run pytest -q tests/integration
 
   release:
