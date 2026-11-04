@@ -43,14 +43,18 @@ async def test_tuning_flow_requires_single_backend_pid(hypopg_postgres):
         # An overlapping checkout keeps the creator busy, forcing independent calls onto another backend.
         async with pool.connection() as creator:
             pinned = SqlDriver(creator)
-            created = first_item(await pinned.execute_query(
-                "SELECT pg_backend_pid() AS pid, indexrelid FROM hypopg_create_index('CREATE INDEX ON development_marker (label)')"
-            ))
+            created = first_item(
+                await pinned.execute_query(
+                    "SELECT pg_backend_pid() AS pid, indexrelid FROM hypopg_create_index('CREATE INDEX ON development_marker (label)')"
+                )
+            )
             independent = SqlDriver(manager)
             listed = first_item(await independent.execute_query("SELECT pg_backend_pid() AS pid, count(*) AS indexes FROM hypopg_list_indexes"))
-            explained = first_item(await independent.execute_query(
-                "EXPLAIN SELECT * FROM development_marker WHERE label = 'app_development'; SELECT pg_backend_pid() AS pid"
-            ))
+            explained = first_item(
+                await independent.execute_query(
+                    "EXPLAIN SELECT * FROM development_marker WHERE label = 'app_development'; SELECT pg_backend_pid() AS pid"
+                )
+            )
             reset = first_item(await independent.execute_query("SELECT pg_backend_pid() AS pid, hypopg_reset()"))
             remaining = first_item(await pinned.execute_query("SELECT indexrelid FROM hypopg_list_indexes"))
             assert listed.cells["indexes"] == 0

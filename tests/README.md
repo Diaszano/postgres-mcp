@@ -32,13 +32,16 @@ uv run --frozen --group dev pytest tests/unit/test_db_conn_pool.py::test_pool_co
   - `test_multidb_server.py`: Multi-database routing, `list_databases`, restricted mode, per-database extension checks and the MCP tool contract (nine tools plus `list_databases`, optional `database`, annotations, legacy defaults)
 - `tests/integration/test_mcp_result_wire.py` also runs the live tool discovery, SELECT and restricted-write checks over an MCP client session.
 
-## Multi-database integration environment
+## Multi-database integration and multi-version environment
 
-`tests/integration/test_multi_database_integration.py` needs a running Docker daemon. The session fixture `multidb_postgres` (`tests/integration/conftest.py`) starts one throwaway PostgreSQL container on a random `127.0.0.1` port with a generated password, and removes it afterwards. It never connects to a local or user database, and a missing Docker daemon is a test error, not a skip.
+The integration harness and version matrix tests use `testcontainers-python` to manage PostgreSQL instances with automated resource cleanup (via Ryuk reaper).
+Supported PostgreSQL versions for matrix testing include `12`, `15`, `16`, `17`, and `18`.
+
+`tests/integration/test_multi_database_integration.py` needs a running Docker daemon. The session fixture `multidb_postgres` (`tests/integration/conftest.py`) starts an ephemeral PostgreSQL Testcontainer on a random `127.0.0.1` port with a generated password, and removes it cleanly afterwards. It never connects to a local or user database, and a missing Docker daemon is a test error, not a skip.
 
 - Databases: `app_development`, `app_testing`, `analytics` (visible) and `blocked_db` (`CONNECT` revoked from `PUBLIC` and from the MCP role). Each visible database has its own marker table.
 - Role: `mcp_test_role` is not a superuser and has no `CREATEDB`. DDL, grants and `REVOKE` run only through the fixture's admin connection, inside the container.
-- Image: `postgres-hypopg:16` (or `MULTIDB_PG_IMAGE` override). The test harness strictly requires HypoPG; missing Docker or extension is an explicit failure, never a silent skip or fallback. `pg_stat_statements` exists only in `app_development`.
+- Image: `postgres-hypopg:16` (or `MULTIDB_PG_IMAGE` override, supporting 16, 17, and 18). The test harness strictly requires HypoPG; missing Docker or extension is an explicit failure, never a silent skip or fallback. `pg_stat_statements` exists only in `app_development`.
 
 ```bash
 uv run --frozen --group dev pytest -q tests/integration/test_multi_database_integration.py
