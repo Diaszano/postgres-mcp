@@ -3,7 +3,6 @@
 import logging
 import os
 import secrets
-import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Generator
@@ -13,6 +12,7 @@ import psycopg
 import pytest
 from docker import errors as docker_errors
 from psycopg import sql
+from testcontainers.community.postgres import PostgresContainer
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,7 @@ def multidb_postgres() -> Generator[MultiDbPostgres, None, None]:
     except docker_errors.ImageNotFound:
         msg = f"Required integration container image {IMAGE} was not found. Build it with hypopg before running integration tests."
         raise RuntimeError(msg) from None
-    with _multidb_container(client, IMAGE) as pg:
+    with _multidb_container(IMAGE) as pg:
         _prepare(pg)
         yield pg
 
@@ -103,36 +103,22 @@ def hypopg_postgres(multidb_postgres: MultiDbPostgres) -> Generator[MultiDbPostg
 
 
 @contextmanager
-def _multidb_container(client: docker.DockerClient, image: str) -> Generator[MultiDbPostgres, None, None]:
+def _multidb_container(image: str) -> Generator[MultiDbPostgres, None, None]:
     admin_password = secrets.token_urlsafe(24)
-    container = client.containers.run(
-        image,
-        name=f"postgres-mcp-multidb-{secrets.token_hex(4)}",
-        environment={"POSTGRES_PASSWORD": admin_password},
-        ports={"5432/tcp": ("127.0.0.1", 0)},
-        command=["-c", "shared_preload_libraries=pg_stat_statements", "-c", "pg_stat_statements.track=all"],
-        detach=True,
+    container = PostgresContainer(
+        image=image,
+        username="postgres",
+        password=admin_password,
+        dbname="postgres",
+        port=5432,
+        driver=None,
     )
-    try:
-        deadline = time.time() + 90
-        while True:
-            container.reload()
-            port_info = container.ports.get("5432/tcp")
-            if port_info:
-                port = int(port_info[0]["HostPort"])
-                try:
-                    psycopg.connect(f"postgresql://postgres:{admin_password}@127.0.0.1:{port}/postgres", connect_timeout=2).close()
-                    break
-                except psycopg.OperationalError:
-                    pass
-            if time.time() > deadline:
-                raise RuntimeError(f"PostgreSQL did not become ready; container logs tail:\n{container.logs().decode()[-1500:]}")
-            time.sleep(1)
-        pg = MultiDbPostgres("127.0.0.1", port, admin_password, secrets.token_urlsafe(24), "")
+    container.with_command("-c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all")
+    with container:
+        host = container.get_container_host_ip()
+        port = int(container.get_exposed_port(5432))
+        pg = MultiDbPostgres(host, port, admin_password, secrets.token_urlsafe(24), "")
         with pg.admin() as conn:
             version_res = conn.execute("SHOW server_version").fetchone()
             object.__setattr__(pg, "server_version", version_res[0] if version_res else "")
         yield pg
-    finally:
-        container.stop()
-        container.remove(v=True)
