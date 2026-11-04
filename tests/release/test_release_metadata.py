@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from scripts.ci.check_version import check_package_version
+from scripts.ci.check_version import check_package_version, get_pyproject_version
 
 
 def test_ci_has_required_quality_gates() -> None:
@@ -31,15 +31,16 @@ def test_ci_has_required_quality_gates() -> None:
 
 def test_package_version_matching() -> None:
     root = Path(__file__).resolve().parents[2]
+    current_version = get_pyproject_version(root)
 
     # Matching tags
-    assert check_package_version(tag="v0.3.0", project_dir=root) == "0.3.0"
-    assert check_package_version(tag="0.3.0", project_dir=root) == "0.3.0"
-    assert check_package_version(tag=None, project_dir=root) == "0.3.0"
+    assert check_package_version(tag=f"v{current_version}", project_dir=root) == current_version
+    assert check_package_version(tag=current_version, project_dir=root) == current_version
+    assert check_package_version(tag=None, project_dir=root) == current_version
 
     # Mismatched tags
     with pytest.raises(ValueError, match="Version mismatch"):
-        check_package_version(tag="v1.0.0", project_dir=root)
+        check_package_version(tag="v999.0.0", project_dir=root)
 
     with pytest.raises(ValueError, match="Invalid semantic version"):
         check_package_version(tag="invalid-version", project_dir=root)
@@ -47,15 +48,16 @@ def test_package_version_matching() -> None:
 
 def test_check_version_cli() -> None:
     root = Path(__file__).resolve().parents[2]
+    current_version = get_pyproject_version(root)
     script_path = root / "scripts" / "ci" / "check_version.py"
 
     res_ok = subprocess.run(
-        [sys.executable, str(script_path), "--tag", "v0.3.0", "--project-dir", str(root)],
+        [sys.executable, str(script_path), "--tag", f"v{current_version}", "--project-dir", str(root)],
         capture_output=True,
         text=True,
     )
     assert res_ok.returncode == 0, res_ok.stderr
-    assert "0.3.0" in res_ok.stdout
+    assert current_version in res_ok.stdout
 
     res_fail = subprocess.run(
         [sys.executable, str(script_path), "--tag", "v9.9.9", "--project-dir", str(root)],
