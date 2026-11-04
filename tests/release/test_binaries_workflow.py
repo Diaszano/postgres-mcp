@@ -35,7 +35,7 @@ def test_binaries_workflow_matrix_platforms() -> None:
 
     combos = {(item["target_os"], item["target_arch"], item["runner"]) for item in include}
     assert ("darwin", "arm64", "macos-latest") in combos
-    assert ("darwin", "amd64", "macos-13") in combos
+    assert ("darwin", "amd64", "macos-latest") in combos
     assert ("linux", "amd64", "ubuntu-latest") in combos
     assert ("linux", "arm64", "ubuntu-24.04-arm") in combos
 

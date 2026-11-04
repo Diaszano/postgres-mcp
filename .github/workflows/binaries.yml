@@ -24,7 +24,7 @@ jobs:
           - runner: macos-latest
             target_os: darwin
             target_arch: arm64
-          - runner: macos-13
+          - runner: macos-latest
             target_os: darwin
             target_arch: amd64
           - runner: ubuntu-latest
@@ -45,7 +45,12 @@ jobs:
           version: "0.13.7"
 
       - name: Set up Python
-        run: uv python install 3.13
+        run: |
+          if [[ "${{ matrix.target_os }}" == "darwin" && "${{ matrix.target_arch }}" == "amd64" ]]; then
+            arch -x86_64 uv python install 3.13
+          else
+            uv python install 3.13
+          fi
 
       - name: Build standalone binary
         env:
