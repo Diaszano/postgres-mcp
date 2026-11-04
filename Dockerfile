@@ -37,9 +37,9 @@ ARG TARGETPLATFORM
 ARG BUILDPLATFORM
 ARG REVISION
 ARG VERSION
-LABEL org.opencontainers.image.title="Postgres MCP"
-LABEL org.opencontainers.image.description="Postgres MCP Server with Security Hardening, Query Budgets and Pagination (${TARGETPLATFORM})"
-LABEL org.opencontainers.image.source="https://github.com/diaszano/postgres-mcp"
+LABEL org.opencontainers.image.title="pgscope"
+LABEL org.opencontainers.image.description="pgscope MCP server with Security Hardening, Query Budgets and Pagination (${TARGETPLATFORM})"
+LABEL org.opencontainers.image.source="https://github.com/diaszano/pgscope"
 LABEL org.opencontainers.image.revision="${REVISION}"
 LABEL org.opencontainers.image.version="${VERSION}"
 LABEL org.opencontainers.image.licenses="MIT"
@@ -62,9 +62,9 @@ USER app
 # Expose the SSE port
 EXPOSE 8000
 
-# Run the postgres-mcp server
+# Run the pgscope server
 # Users can pass a database URI or individual connection arguments:
-#   docker run -it --rm postgres-mcp postgres://user:pass@host:port/dbname
-#   docker run -it --rm postgres-mcp -h myhost -p 5432 -U myuser -d mydb
-ENTRYPOINT ["/app/docker-entrypoint.sh", "postgres-mcp"]
+#   docker run -it --rm pgscope postgres://user:pass@host:port/dbname
+#   docker run -it --rm pgscope -h myhost -p 5432 -U myuser -d mydb
+ENTRYPOINT ["/app/docker-entrypoint.sh", "pgscope"]
 CMD []

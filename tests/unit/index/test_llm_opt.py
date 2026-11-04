@@ -9,7 +9,7 @@ import pytest
 from pglast import parse_sql
 from pglast.ast import SelectStmt
 
-from postgres_mcp.index.llm_opt import LLMOptimizerTool
+from pgscope.index.llm_opt import LLMOptimizerTool
 
 
 @pytest.mark.asyncio
@@ -22,9 +22,9 @@ async def test_explain_plan_literals_are_not_logged(caplog):
     optimizer._get_table_size = AsyncMock(return_value=100)
 
     with (
-        patch("postgres_mcp.index.llm_opt.ExplainPlanTool", return_value=explain),
+        patch("pgscope.index.llm_opt.ExplainPlanTool", return_value=explain),
         patch.object(optimizer, "_extract_indexes_from_explain_plan_with_columns", AsyncMock(side_effect=RuntimeError("stop"))),
-        caplog.at_level(logging.DEBUG, logger="postgres_mcp.index.llm_opt"),
+        caplog.at_level(logging.DEBUG, logger="pgscope.index.llm_opt"),
     ):
         statement = parse_sql(sql)[0].stmt
         assert isinstance(statement, SelectStmt)

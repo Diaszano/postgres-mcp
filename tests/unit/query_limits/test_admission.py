@@ -5,9 +5,9 @@ from contextlib import asynccontextmanager
 import pytest
 from psycopg.errors import QueryCanceled
 
-from postgres_mcp.query_limits.admission import QueryAdmission
-from postgres_mcp.query_limits.admission import remaining_query_seconds
-from postgres_mcp.security.errors import PublicToolError
+from pgscope.query_limits.admission import QueryAdmission
+from pgscope.query_limits.admission import remaining_query_seconds
+from pgscope.security.errors import PublicToolError
 
 
 @pytest.mark.asyncio

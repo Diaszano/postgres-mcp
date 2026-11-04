@@ -26,14 +26,14 @@ def _run_entrypoint(tmp_path, args, *, env=None, ping_script=None):
     capture = tmp_path / "captured.json"
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
-    postgres_mcp = fake_bin / "postgres-mcp"
-    postgres_mcp.write_text(
+    pgscope = fake_bin / "pgscope"
+    pgscope.write_text(
         "#!/usr/bin/env python3\n"
         "import json, os, sys\n"
         "with open(os.environ['CAPTURE_FILE'], 'w') as f:\n"
         "    json.dump({'argv': sys.argv[1:], 'database_uri': os.environ.get('DATABASE_URI')}, f)\n"
     )
-    postgres_mcp.chmod(0o755)
+    pgscope.chmod(0o755)
     path = str(fake_bin)
     if ping_script:
         ping = fake_bin / "ping"
@@ -44,7 +44,7 @@ def _run_entrypoint(tmp_path, args, *, env=None, ping_script=None):
     if env:
         run_env.update(env)
     result = subprocess.run(
-        ["bash", str(ENTRYPOINT), "postgres-mcp", *args],
+        ["bash", str(ENTRYPOINT), "pgscope", *args],
         env=run_env,
         text=True,
         capture_output=True,

@@ -2,7 +2,7 @@
 
 ## Upstream Attribution
 
-This project is based on and extends `postgres-mcp`, originally developed and maintained by:
+pgscope is based on and extends `postgres-mcp`, originally developed and maintained by:
 
 - **Author**: Johann Schleier-Smith (<jssmith@crystal.cloud>)
 - **Original Copyright**: Copyright (c) 2024-2025 Crystal Corp.

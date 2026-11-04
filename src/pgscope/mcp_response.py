@@ -6,8 +6,8 @@ from typing import Any
 
 from mcp import types
 
-from postgres_mcp.security.errors import PublicToolError
-from postgres_mcp.security.errors import to_public_error
+from pgscope.security.errors import PublicToolError
+from pgscope.security.errors import to_public_error
 
 
 class ToolResult(types.CallToolResult):

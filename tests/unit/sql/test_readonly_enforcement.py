@@ -4,10 +4,10 @@ from unittest.mock import patch
 
 import pytest
 
-from postgres_mcp.server import AccessMode
-from postgres_mcp.server import get_sql_driver
-from postgres_mcp.sql import SafeSqlDriver
-from postgres_mcp.sql import SqlDriver
+from pgscope.server import AccessMode
+from pgscope.server import get_sql_driver
+from pgscope.sql import SafeSqlDriver
+from pgscope.sql import SqlDriver
 from tests.type_helpers import text_at
 
 
@@ -28,8 +28,8 @@ async def test_force_readonly_enforcement():
 
     # Test UNRESTRICTED mode
     with (
-        patch("postgres_mcp.server.current_access_mode", AccessMode.UNRESTRICTED),
-        patch("postgres_mcp.server.db_connection", mock_conn_pool),
+        patch("pgscope.server.current_access_mode", AccessMode.UNRESTRICTED),
+        patch("pgscope.server.db_connection", mock_conn_pool),
         patch.object(SqlDriver, "_execute_with_connection", mock_execute),
     ):
         async with get_sql_driver() as driver:
@@ -59,8 +59,8 @@ async def test_force_readonly_enforcement():
 
     # Test RESTRICTED mode
     with (
-        patch("postgres_mcp.server.current_access_mode", AccessMode.RESTRICTED),
-        patch("postgres_mcp.server.db_connection", mock_conn_pool),
+        patch("pgscope.server.current_access_mode", AccessMode.RESTRICTED),
+        patch("pgscope.server.db_connection", mock_conn_pool),
         patch.object(SqlDriver, "_execute_with_connection", mock_execute),
     ):
         async with get_sql_driver() as driver:
@@ -92,9 +92,9 @@ async def test_force_readonly_enforcement():
 
 from contextlib import asynccontextmanager  # noqa: E402
 
-from postgres_mcp.database_config import parse_database_config  # noqa: E402
-from postgres_mcp.server import execute_sql  # noqa: E402
-from postgres_mcp.server import explain_query  # noqa: E402
+from pgscope.database_config import parse_database_config  # noqa: E402
+from pgscope.server import execute_sql  # noqa: E402
+from pgscope.server import explain_query  # noqa: E402
 
 # Direct calls bypass FastMCP, so explain_query's Field() defaults are passed explicitly.
 DATABASES = pytest.mark.parametrize("database", [None, "app_testing"], ids=["default", "explicit"])
@@ -117,9 +117,9 @@ def restricted_discovery():
     config = parse_database_config({"DATABASE_URI": "postgresql://u:p@h/app_main", "DATABASE_AUTO_DISCOVER": "true"}, None, None)
     sql_executed = AsyncMock(return_value=[SqlDriver.RowResult(cells={"QUERY PLAN": []})])
     with (
-        patch("postgres_mcp.server.database_config", config),
-        patch("postgres_mcp.server.registry", _Registry()),
-        patch("postgres_mcp.server.current_access_mode", AccessMode.RESTRICTED),
+        patch("pgscope.server.database_config", config),
+        patch("pgscope.server.registry", _Registry()),
+        patch("pgscope.server.current_access_mode", AccessMode.RESTRICTED),
         patch.object(SqlDriver, "_execute_with_connection", sql_executed),
     ):
         yield sql_executed

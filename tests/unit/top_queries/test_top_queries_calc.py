@@ -4,10 +4,10 @@ from unittest.mock import patch
 
 import pytest
 
-import postgres_mcp.top_queries.top_queries_calc as top_queries_module
-from postgres_mcp.sql import SqlDriver
-from postgres_mcp.sql.extension_utils import ExtensionStatus
-from postgres_mcp.top_queries import TopQueriesCalc
+import pgscope.top_queries.top_queries_calc as top_queries_module
+from pgscope.sql import SqlDriver
+from pgscope.sql.extension_utils import ExtensionStatus
+from pgscope.top_queries import TopQueriesCalc
 
 
 class MockSqlRowResult:

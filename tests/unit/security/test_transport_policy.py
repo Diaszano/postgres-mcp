@@ -27,9 +27,9 @@ def clear_http_env(monkeypatch):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("transport", ["sse", "streamable-http"])
 async def test_default_http_bind_is_loopback(monkeypatch, transport):
-    from postgres_mcp import server
+    from pgscope import server
 
-    monkeypatch.setattr(sys, "argv", ["postgres_mcp", "postgresql://localhost/db", f"--transport={transport}"])
+    monkeypatch.setattr(sys, "argv", ["pgscope", "postgresql://localhost/db", f"--transport={transport}"])
     runner = "run_sse_async" if transport == "sse" else "run_streamable_http_async"
     with patch.object(server.db_connection, "pool_connect", AsyncMock()), patch.object(server.mcp, runner, AsyncMock()) as run:
         await server.main()
@@ -42,9 +42,9 @@ async def test_default_http_bind_is_loopback(monkeypatch, transport):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("transport", ["sse", "streamable-http"])
 async def test_public_bind_without_auth_policy_rejected(monkeypatch, transport):
-    from postgres_mcp import server
+    from pgscope import server
 
-    monkeypatch.setattr(sys, "argv", ["postgres_mcp", "postgresql://localhost/db", f"--transport={transport}", f"--{transport}-host=0.0.0.0"])
+    monkeypatch.setattr(sys, "argv", ["pgscope", "postgresql://localhost/db", f"--transport={transport}", f"--{transport}-host=0.0.0.0"])
     with (
         patch.object(server.db_connection, "pool_connect", AsyncMock()) as connect,
         patch.object(server.mcp, "run_sse_async", AsyncMock()) as sse,
@@ -60,10 +60,10 @@ async def test_public_bind_without_auth_policy_rejected(monkeypatch, transport):
 
 @pytest.mark.asyncio
 async def test_stdio_unaffected(monkeypatch):
-    from postgres_mcp import server
+    from pgscope import server
 
     monkeypatch.setenv("MCP_HTTP_AUTH_TOKEN", "invalid")
-    monkeypatch.setattr(sys, "argv", ["postgres_mcp", "postgresql://localhost/db"])
+    monkeypatch.setattr(sys, "argv", ["pgscope", "postgresql://localhost/db"])
     with patch.object(server.db_connection, "pool_connect", AsyncMock()), patch.object(server.mcp, "run_stdio_async", AsyncMock()) as run:
         await server.main()
     run.assert_awaited_once()
@@ -72,11 +72,11 @@ async def test_stdio_unaffected(monkeypatch):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("transport", ["sse", "streamable-http"])
 async def test_public_bind_uses_authenticated_runner(monkeypatch, transport, auth_env):
-    from postgres_mcp import server
+    from pgscope import server
 
     for key, value in auth_env.items():
         monkeypatch.setenv(key, value)
-    monkeypatch.setattr(sys, "argv", ["postgres_mcp", "postgresql://localhost/db", f"--transport={transport}", f"--{transport}-host=0.0.0.0"])
+    monkeypatch.setattr(sys, "argv", ["pgscope", "postgresql://localhost/db", f"--transport={transport}", f"--{transport}-host=0.0.0.0"])
     with (
         patch.object(server.db_connection, "pool_connect", AsyncMock()),
         patch.object(server, "run_authenticated_http", AsyncMock()) as run,
@@ -104,8 +104,8 @@ def auth_env():
 
 @pytest.mark.parametrize("host", ["0.0.0.0", "::", "192.0.2.1", "example.test", "127.0.0.1.example.test", "", "localhost."])
 def test_non_loopback_requires_auth(host):
-    from postgres_mcp.security.transport import HttpAuthConfig
-    from postgres_mcp.security.transport import validate_http_deployment
+    from pgscope.security.transport import HttpAuthConfig
+    from pgscope.security.transport import validate_http_deployment
 
     with pytest.raises(ValueError, match="Authenticated HTTP configuration is required"):
         validate_http_deployment("sse", host, HttpAuthConfig.from_env({}))
@@ -113,8 +113,8 @@ def test_non_loopback_requires_auth(host):
 
 @pytest.mark.parametrize("host", ["localhost", "127.0.0.1", "127.1.2.3", "::1"])
 def test_loopback_allowed(host):
-    from postgres_mcp.security.transport import HttpAuthConfig
-    from postgres_mcp.security.transport import validate_http_deployment
+    from pgscope.security.transport import HttpAuthConfig
+    from pgscope.security.transport import validate_http_deployment
 
     validate_http_deployment("streamable-http", host, HttpAuthConfig.from_env({}))
 
@@ -142,7 +142,7 @@ def test_loopback_allowed(host):
     ],
 )
 def test_invalid_auth_config_is_sanitized(auth_env, key, value):
-    from postgres_mcp.security.transport import HttpAuthConfig
+    from pgscope.security.transport import HttpAuthConfig
 
     auth_env[key] = value
     with pytest.raises(ValueError) as error:
@@ -154,7 +154,7 @@ def test_invalid_auth_config_is_sanitized(auth_env, key, value):
 
 @pytest.mark.parametrize("key", ["MCP_HTTP_AUTH_TOKEN", "MCP_HTTP_ALLOWED_HOSTS", "MCP_HTTP_ALLOWED_ORIGINS"])
 def test_partial_auth_config_rejected(auth_env, key):
-    from postgres_mcp.security.transport import HttpAuthConfig
+    from pgscope.security.transport import HttpAuthConfig
 
     del auth_env[key]
     with pytest.raises(ValueError, match="Invalid HTTP authentication configuration"):
@@ -165,9 +165,9 @@ def test_partial_auth_config_rejected(auth_env, key):
 @pytest.mark.parametrize("transport", ["sse", "streamable-http"])
 async def test_verified_authenticated_ingress(auth_env, transport):
     """Exercise MCP 1.25.0's real middleware, context principal and transport checks."""
-    from postgres_mcp.security.transport import HttpAuthConfig
-    from postgres_mcp.security.transport import authenticated_http_app
-    from postgres_mcp.security.transport import validate_http_deployment
+    from pgscope.security.transport import HttpAuthConfig
+    from pgscope.security.transport import authenticated_http_app
+    from pgscope.security.transport import validate_http_deployment
 
     auth = HttpAuthConfig.from_env(auth_env)
     validate_http_deployment(transport, "0.0.0.0", auth)
@@ -208,8 +208,8 @@ async def test_verified_authenticated_ingress(auth_env, transport):
 
 
 def test_authenticated_app_preserves_lifespan(auth_env):
-    from postgres_mcp.security.transport import HttpAuthConfig
-    from postgres_mcp.security.transport import authenticated_http_app
+    from pgscope.security.transport import HttpAuthConfig
+    from pgscope.security.transport import authenticated_http_app
 
     server = FastMCP("lifespan-spike", stateless_http=True)
     app = authenticated_http_app(server, "streamable-http", HttpAuthConfig.from_env(auth_env))
@@ -219,8 +219,8 @@ def test_authenticated_app_preserves_lifespan(auth_env):
 
 @pytest.mark.asyncio
 async def test_verified_sse_principal(auth_env):
-    from postgres_mcp.security.transport import HttpAuthConfig
-    from postgres_mcp.security.transport import authenticated_http_app
+    from pgscope.security.transport import HttpAuthConfig
+    from pgscope.security.transport import authenticated_http_app
 
     server = FastMCP("sse-auth-spike")
 

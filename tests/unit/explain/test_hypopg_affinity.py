@@ -6,14 +6,14 @@ from unittest.mock import AsyncMock
 import pytest
 from psycopg_pool import AsyncConnectionPool
 
-import postgres_mcp.server as server
-from postgres_mcp.database_config import parse_database_config
-from postgres_mcp.explain import ExplainPlanTool
-from postgres_mcp.sql import IndexDefinition
-from postgres_mcp.sql import SafeSqlDriver
-from postgres_mcp.sql import SqlDriver
-from postgres_mcp.sql.database_session import database_session
-from postgres_mcp.sql.sql_driver import DbConnPool
+import pgscope.server as server
+from pgscope.database_config import parse_database_config
+from pgscope.explain import ExplainPlanTool
+from pgscope.sql import IndexDefinition
+from pgscope.sql import SafeSqlDriver
+from pgscope.sql import SqlDriver
+from pgscope.sql.database_session import database_session
+from pgscope.sql.sql_driver import DbConnPool
 from tests.type_helpers import text_at
 
 PLAN = {
@@ -183,7 +183,7 @@ async def test_failed_reset_retires_connection_and_preserves_primary_error(pool,
 async def test_failed_reset_returns_sanitized_error(pool, monkeypatch, restricted):
     if restricted:
         monkeypatch.setattr(server, "current_access_mode", server.AccessMode.RESTRICTED)
-        monkeypatch.setattr("postgres_mcp.sql.safe_sql.validate_restricted_function_resolution", AsyncMock())
+        monkeypatch.setattr("pgscope.sql.safe_sql.validate_restricted_function_resolution", AsyncMock())
     pool.backend.reset_error = ValueError("reset failed: private database details")
 
     result = await server.explain_query("SELECT * FROM users", analyze=False, hypothetical_indexes=INDEXES)
@@ -206,7 +206,7 @@ async def test_restricted_hypopg_preserves_safe_driver_validation(pool, monkeypa
 
     monkeypatch.setattr(SafeSqlDriver, "validate", record)
     runtime_guard = AsyncMock()
-    monkeypatch.setattr("postgres_mcp.sql.safe_sql.validate_restricted_function_resolution", runtime_guard)
+    monkeypatch.setattr("pgscope.sql.safe_sql.validate_restricted_function_resolution", runtime_guard)
     result = await server.explain_query("SELECT * FROM users", analyze=False, hypothetical_indexes=INDEXES)
 
     assert "Index Scan" in text_at(result)

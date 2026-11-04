@@ -7,20 +7,20 @@ import pytest
 import pytest_asyncio
 from psycopg.pq import TransactionStatus
 
-import postgres_mcp.server as server
-import postgres_mcp.sql.sql_driver as driver_module
-from postgres_mcp.application.query_service import QueryExecutionService
-from postgres_mcp.database_config import parse_database_config
-from postgres_mcp.query_limits.admission import QueryAdmission
-from postgres_mcp.query_limits.config import QueryBudgetConfig
-from postgres_mcp.query_limits.policy import QueryLimits
-from postgres_mcp.query_limits.results import encode_bounded_result
-from postgres_mcp.security.errors import PublicToolError
-from postgres_mcp.security.errors import to_public_error
-from postgres_mcp.sql import SqlDriver
-from postgres_mcp.sql.database_catalog import DatabaseCatalog
-from postgres_mcp.sql.database_registry import DatabaseRegistry
-from postgres_mcp.sql.database_registry import DatabaseUnavailableError
+import pgscope.server as server
+import pgscope.sql.sql_driver as driver_module
+from pgscope.application.query_service import QueryExecutionService
+from pgscope.database_config import parse_database_config
+from pgscope.query_limits.admission import QueryAdmission
+from pgscope.query_limits.config import QueryBudgetConfig
+from pgscope.query_limits.policy import QueryLimits
+from pgscope.query_limits.results import encode_bounded_result
+from pgscope.security.errors import PublicToolError
+from pgscope.security.errors import to_public_error
+from pgscope.sql import SqlDriver
+from pgscope.sql.database_catalog import DatabaseCatalog
+from pgscope.sql.database_registry import DatabaseRegistry
+from pgscope.sql.database_registry import DatabaseUnavailableError
 from tests.type_helpers import text_at
 
 

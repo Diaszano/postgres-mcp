@@ -4,13 +4,13 @@ from unittest.mock import AsyncMock
 import pytest
 from psycopg import OperationalError
 
-from postgres_mcp.security.errors import DatabaseNotAllowedError
-from postgres_mcp.security.errors import PublicToolError
-from postgres_mcp.security.errors import log_public_error
-from postgres_mcp.security.errors import to_public_error
-from postgres_mcp.sql.database_catalog import DiscoveryUnavailableError
-from postgres_mcp.sql.database_registry import PoolCapacityError
-from postgres_mcp.sql.safe_sql import SafeSqlDriver
+from pgscope.security.errors import DatabaseNotAllowedError
+from pgscope.security.errors import PublicToolError
+from pgscope.security.errors import log_public_error
+from pgscope.security.errors import to_public_error
+from pgscope.sql.database_catalog import DiscoveryUnavailableError
+from pgscope.sql.database_registry import PoolCapacityError
+from pgscope.sql.safe_sql import SafeSqlDriver
 
 
 def test_public_errors_hide_dsn_and_bind_params():

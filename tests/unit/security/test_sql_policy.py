@@ -3,9 +3,9 @@ from unittest.mock import Mock
 
 import pytest
 
-from postgres_mcp.security.errors import SQLValidationError
-from postgres_mcp.sql import SafeSqlDriver
-from postgres_mcp.sql import SqlDriver
+from pgscope.security.errors import SQLValidationError
+from pgscope.sql import SafeSqlDriver
+from pgscope.sql import SqlDriver
 
 
 @pytest.mark.asyncio
@@ -45,6 +45,6 @@ def test_restricted_rejects_explicit_untrusted_resolution(query):
 
 
 def test_restricted_policy_accepts_qualified_reads():
-    from postgres_mcp.sql.safe_sql import validate_restricted_sql
+    from pgscope.sql.safe_sql import validate_restricted_sql
 
     validate_restricted_sql("SELECT pg_catalog.lower(name) FROM public.items")

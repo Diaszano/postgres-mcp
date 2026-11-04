@@ -86,7 +86,7 @@ class _ConfiguredTokenVerifier:
     async def verify_token(self, token: str) -> AccessToken | None:
         if not secrets.compare_digest(token.encode(), self.token.encode()):
             return None
-        return AccessToken(token=token, client_id="configured-http-client", scopes=["postgres-mcp"])
+        return AccessToken(token=token, client_id="configured-http-client", scopes=["pgscope"])
 
 
 def authenticated_http_app(server: FastMCP, transport: str, auth: HttpAuthConfig) -> ASGIApp:
@@ -99,7 +99,7 @@ def authenticated_http_app(server: FastMCP, transport: str, auth: HttpAuthConfig
     )
     app = server.sse_app() if transport == "sse" else server.streamable_http_app()
     authenticated = AuthenticationMiddleware(
-        AuthContextMiddleware(RequireAuthMiddleware(app, required_scopes=["postgres-mcp"])),
+        AuthContextMiddleware(RequireAuthMiddleware(app, required_scopes=["pgscope"])),
         backend=BearerAuthBackend(_ConfiguredTokenVerifier(auth.token)),
     )
 

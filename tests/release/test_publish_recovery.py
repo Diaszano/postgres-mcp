@@ -13,7 +13,7 @@ from scripts.ci.validate_release_ref import validate_release_ref
 def test_validate_release_ref_valid(tmp_path: Path) -> None:
     # Setup mock git repo with valid tag matching pyproject.toml
     pyproject = tmp_path / "pyproject.toml"
-    pyproject.write_text('[project]\nname = "postgres-mcp"\nversion = "0.3.0"\n', encoding="utf-8")
+    pyproject.write_text('[project]\nname = "pgscope"\nversion = "0.3.0"\n', encoding="utf-8")
 
     # Should succeed without error
     res = validate_release_ref(tag="v0.3.0", repo_root=tmp_path)
@@ -23,7 +23,7 @@ def test_validate_release_ref_valid(tmp_path: Path) -> None:
 
 def test_validate_release_ref_mismatch(tmp_path: Path) -> None:
     pyproject = tmp_path / "pyproject.toml"
-    pyproject.write_text('[project]\nname = "postgres-mcp"\nversion = "0.3.0"\n', encoding="utf-8")
+    pyproject.write_text('[project]\nname = "pgscope"\nversion = "0.3.0"\n', encoding="utf-8")
 
     with pytest.raises(ValueError, match="does not match project version"):
         validate_release_ref(tag="v0.3.1", repo_root=tmp_path)
@@ -31,7 +31,7 @@ def test_validate_release_ref_mismatch(tmp_path: Path) -> None:
 
 def test_validate_release_ref_invalid_tag_format(tmp_path: Path) -> None:
     pyproject = tmp_path / "pyproject.toml"
-    pyproject.write_text('[project]\nname = "postgres-mcp"\nversion = "0.3.0"\n', encoding="utf-8")
+    pyproject.write_text('[project]\nname = "pgscope"\nversion = "0.3.0"\n', encoding="utf-8")
 
     for bad_tag in ["0.3.0", "v0.3.0-rc1", "v0.3.0; rm -rf", "latest"]:
         with pytest.raises(ValueError):

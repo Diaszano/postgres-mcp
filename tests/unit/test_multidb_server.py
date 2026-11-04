@@ -10,15 +10,15 @@ from unittest.mock import patch
 
 import pytest
 
-from postgres_mcp.database_config import parse_database_config
-from postgres_mcp.security.errors import DatabaseNotAllowedError
-from postgres_mcp.server import AccessMode
-from postgres_mcp.server import get_object_details
-from postgres_mcp.server import get_sql_driver
-from postgres_mcp.server import list_objects
-from postgres_mcp.server import list_schemas
-from postgres_mcp.sql import SafeSqlDriver
-from postgres_mcp.sql import SqlDriver
+from pgscope.database_config import parse_database_config
+from pgscope.security.errors import DatabaseNotAllowedError
+from pgscope.server import AccessMode
+from pgscope.server import get_object_details
+from pgscope.server import get_sql_driver
+from pgscope.server import list_objects
+from pgscope.server import list_schemas
+from pgscope.sql import SafeSqlDriver
+from pgscope.sql import SqlDriver
 from tests.type_helpers import text_at
 
 BOOTSTRAP = "postgresql://user:s3cret@db.internal:5432/app_main"
@@ -54,9 +54,9 @@ def _config(auto_discover: bool):
 def discovery():
     registry = FakeRegistry()
     with (
-        patch("postgres_mcp.server.database_config", _config(True)),
-        patch("postgres_mcp.server.registry", registry),
-        patch("postgres_mcp.server.current_access_mode", AccessMode.UNRESTRICTED),
+        patch("pgscope.server.database_config", _config(True)),
+        patch("pgscope.server.registry", registry),
+        patch("pgscope.server.current_access_mode", AccessMode.UNRESTRICTED),
     ):
         yield registry
 
@@ -73,7 +73,7 @@ async def test_get_sql_driver_uses_selected_pool(discovery):
 
 @pytest.mark.asyncio
 async def test_get_sql_driver_restricted_wraps_safe_driver(discovery):
-    with patch("postgres_mcp.server.current_access_mode", AccessMode.RESTRICTED):
+    with patch("pgscope.server.current_access_mode", AccessMode.RESTRICTED):
         async with get_sql_driver("app_testing") as driver:
             assert isinstance(driver, SafeSqlDriver)
             assert driver.timeout == 30
@@ -143,7 +143,7 @@ async def test_tool_holds_lease_for_its_queries(discovery):
 async def test_restricted_tool_query_is_read_only(discovery):
     execute = AsyncMock(return_value=[SqlDriver.RowResult(cells={"schema_name": "public"})])
     with (
-        patch("postgres_mcp.server.current_access_mode", AccessMode.RESTRICTED),
+        patch("pgscope.server.current_access_mode", AccessMode.RESTRICTED),
         patch.object(SqlDriver, "_execute_with_connection", execute),
     ):
         await list_schemas()
@@ -155,9 +155,9 @@ async def test_restricted_tool_query_is_read_only(discovery):
 async def test_legacy_rejects_database_other_than_bootstrap(access_mode):
     registry = FakeRegistry()
     with (
-        patch("postgres_mcp.server.database_config", _config(False)),
-        patch("postgres_mcp.server.registry", registry),
-        patch("postgres_mcp.server.current_access_mode", access_mode),
+        patch("pgscope.server.database_config", _config(False)),
+        patch("pgscope.server.registry", registry),
+        patch("pgscope.server.current_access_mode", access_mode),
     ):
         with pytest.raises(ValueError) as excinfo:
             async with get_sql_driver("app_testing"):
@@ -174,10 +174,10 @@ async def test_legacy_uses_bootstrap_pool_for_default_or_same_name():
     bootstrap_pool = MagicMock(name="bootstrap")
     registry = FakeRegistry()
     with (
-        patch("postgres_mcp.server.database_config", _config(False)),
-        patch("postgres_mcp.server.registry", registry),
-        patch("postgres_mcp.server.db_connection", bootstrap_pool),
-        patch("postgres_mcp.server.current_access_mode", AccessMode.RESTRICTED),
+        patch("pgscope.server.database_config", _config(False)),
+        patch("pgscope.server.registry", registry),
+        patch("pgscope.server.db_connection", bootstrap_pool),
+        patch("pgscope.server.current_access_mode", AccessMode.RESTRICTED),
     ):
         for database in (None, "app_main"):
             async with get_sql_driver(database) as driver:
@@ -189,8 +189,8 @@ async def test_legacy_uses_bootstrap_pool_for_default_or_same_name():
 @pytest.mark.asyncio
 async def test_legacy_without_known_bootstrap_rejects_any_explicit_database():
     with (
-        patch("postgres_mcp.server.database_config", None),
-        patch("postgres_mcp.server.registry", None),
+        patch("pgscope.server.database_config", None),
+        patch("pgscope.server.registry", None),
     ):
         with pytest.raises(DatabaseNotAllowedError) as exc:
             async with get_sql_driver("postgres"):
@@ -252,10 +252,10 @@ async def test_legacy_positional_calls_still_work():
     registry.pools["app_main"] = bootstrap_pool
     calls: list[str] = []
     with (
-        patch("postgres_mcp.server.database_config", _config(False)),
-        patch("postgres_mcp.server.registry", registry),
-        patch("postgres_mcp.server.db_connection", bootstrap_pool),
-        patch("postgres_mcp.server.current_access_mode", AccessMode.UNRESTRICTED),
+        patch("pgscope.server.database_config", _config(False)),
+        patch("pgscope.server.registry", registry),
+        patch("pgscope.server.db_connection", bootstrap_pool),
+        patch("pgscope.server.current_access_mode", AccessMode.UNRESTRICTED),
         patch.object(SqlDriver, "_execute_with_connection", _catalog_execute(registry, calls)),
     ):
         schemas = text_at(await list_schemas())
@@ -280,7 +280,7 @@ async def test_denied_database_never_queries(discovery, call):
 
     denying = Denying()
     execute = AsyncMock()
-    with patch("postgres_mcp.server.registry", denying), patch.object(SqlDriver, "_execute_with_connection", execute):
+    with patch("pgscope.server.registry", denying), patch.object(SqlDriver, "_execute_with_connection", execute):
         text = text_at(await call("secret_db"))
     assert text == "Error: The requested database is not available."
     assert "secret_db" not in text
@@ -293,8 +293,8 @@ async def test_denied_database_never_queries(discovery, call):
 async def test_legacy_denied_database_never_queries_via_tools(call):
     execute = AsyncMock()
     with (
-        patch("postgres_mcp.server.database_config", _config(False)),
-        patch("postgres_mcp.server.db_connection", MagicMock()),
+        patch("pgscope.server.database_config", _config(False)),
+        patch("pgscope.server.db_connection", MagicMock()),
         patch.object(SqlDriver, "_execute_with_connection", execute),
     ):
         text = text_at(await call("app_testing"))
@@ -309,8 +309,8 @@ import json  # noqa: E402
 import logging  # noqa: E402
 import sys  # noqa: E402
 
-from postgres_mcp import server  # noqa: E402
-from postgres_mcp.sql.database_registry import DatabaseInfo  # noqa: E402
+from pgscope import server  # noqa: E402
+from pgscope.sql.database_registry import DatabaseInfo  # noqa: E402
 
 
 class _InfoRegistry:
@@ -329,7 +329,7 @@ class _InfoRegistry:
 @pytest.mark.asyncio
 async def test_list_databases_reports_default_connection_state_stale():
     reg = _InfoRegistry([DatabaseInfo("app_testing", True, "not_connected", False)])
-    with patch("postgres_mcp.server.database_config", _config(True)), patch("postgres_mcp.server.registry", reg):
+    with patch("pgscope.server.database_config", _config(True)), patch("pgscope.server.registry", reg):
         rows = json.loads(text_at(await server.list_databases(refresh=True)))
     assert [row["name"] for row in rows] == ["app_testing"]
     assert rows[0]["is_default"] is True
@@ -342,7 +342,7 @@ async def test_list_databases_reports_default_connection_state_stale():
 async def test_list_databases_does_not_open_extra_pools():
     reg = FakeRegistry()
     cast(Any, reg).list_databases = _InfoRegistry([DatabaseInfo("a", True, "not_connected", False)]).list_databases
-    with patch("postgres_mcp.server.database_config", _config(True)), patch("postgres_mcp.server.registry", reg):
+    with patch("pgscope.server.database_config", _config(True)), patch("pgscope.server.registry", reg):
         await server.list_databases()
     assert reg.pools == {} and reg.requested == []
 
@@ -350,7 +350,7 @@ async def test_list_databases_does_not_open_extra_pools():
 @pytest.mark.asyncio
 async def test_list_databases_error_is_reported_not_raised():
     reg = _InfoRegistry(error=RuntimeError("Database discovery is unavailable"))
-    with patch("postgres_mcp.server.database_config", _config(True)), patch("postgres_mcp.server.registry", reg):
+    with patch("pgscope.server.database_config", _config(True)), patch("pgscope.server.registry", reg):
         text = text_at(await server.list_databases())
     assert text == "Error: The operation failed."
     assert "Database discovery is unavailable" not in text
@@ -359,7 +359,7 @@ async def test_list_databases_error_is_reported_not_raised():
 @pytest.mark.asyncio
 async def test_list_databases_legacy_exposes_only_bootstrap():
     conn = MagicMock(is_valid=True)
-    with patch("postgres_mcp.server.database_config", _config(False)), patch("postgres_mcp.server.db_connection", conn):
+    with patch("pgscope.server.database_config", _config(False)), patch("pgscope.server.db_connection", conn):
         rows = json.loads(text_at(await server.list_databases()))
     assert rows == [{"name": "app_main", "is_default": True, "connection_state": "connected", "catalog_stale": False}]
 
@@ -368,7 +368,7 @@ async def test_list_databases_legacy_exposes_only_bootstrap():
 async def test_list_databases_legacy_without_dbname_has_null_name():
     cfg = parse_database_config({"DATABASE_URI": "postgresql://u:p@h/"}, None, None)
     conn = MagicMock(is_valid=False)
-    with patch("postgres_mcp.server.database_config", cfg), patch("postgres_mcp.server.db_connection", conn):
+    with patch("pgscope.server.database_config", cfg), patch("pgscope.server.db_connection", conn):
         rows = json.loads(text_at(await server.list_databases()))
     assert rows == [{"name": None, "is_default": True, "connection_state": "unavailable", "catalog_stale": False}]
 
@@ -381,7 +381,7 @@ def test_list_databases_is_registered_read_only():
 
 
 async def _run_main(monkeypatch, argv, env):
-    monkeypatch.setattr(sys, "argv", ["postgres_mcp", *argv])
+    monkeypatch.setattr(sys, "argv", ["pgscope", *argv])
     for key in list(__import__("os").environ):
         if key.startswith("DATABASE_"):
             monkeypatch.delenv(key)
@@ -392,10 +392,10 @@ async def _run_main(monkeypatch, argv, env):
     monkeypatch.setattr(server, "database_config", None)
     monkeypatch.setattr(server, "registry", None)
     with (
-        patch("postgres_mcp.server.db_connection.pool_connect", AsyncMock()),
-        patch("postgres_mcp.server.mcp.run_stdio_async", AsyncMock()),
-        patch("postgres_mcp.server.DatabaseRegistry.start", AsyncMock()),
-        patch("postgres_mcp.server.DatabaseRegistry.close_all", AsyncMock()),
+        patch("pgscope.server.db_connection.pool_connect", AsyncMock()),
+        patch("pgscope.server.mcp.run_stdio_async", AsyncMock()),
+        patch("pgscope.server.DatabaseRegistry.start", AsyncMock()),
+        patch("pgscope.server.DatabaseRegistry.close_all", AsyncMock()),
     ):
         await server.main()
 
@@ -433,7 +433,7 @@ async def test_cli_discovery_explicit_restricted(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_cli_explicit_unrestricted_warns(monkeypatch, caplog):
-    with caplog.at_level(logging.WARNING, logger="postgres_mcp.server"):
+    with caplog.at_level(logging.WARNING, logger="pgscope.server"):
         await _run_main(monkeypatch, ["--access-mode=unrestricted"], DISCOVER)
     assert server.current_access_mode == AccessMode.UNRESTRICTED
     assert any("unrestricted" in r.getMessage().lower() and r.levelno == logging.WARNING for r in caplog.records)
@@ -442,9 +442,9 @@ async def test_cli_explicit_unrestricted_warns(monkeypatch, caplog):
 
 @pytest.mark.asyncio
 async def test_cli_legacy_explicit_unrestricted_does_not_warn(monkeypatch, caplog):
-    with caplog.at_level(logging.WARNING, logger="postgres_mcp.server"):
+    with caplog.at_level(logging.WARNING, logger="pgscope.server"):
         await _run_main(monkeypatch, ["--access-mode=unrestricted"], URI)
-    assert [r for r in caplog.records if r.name == "postgres_mcp.server"] == []
+    assert [r for r in caplog.records if r.name == "pgscope.server"] == []
 
 
 @pytest.mark.asyncio
@@ -465,21 +465,21 @@ async def test_startup_degraded_does_not_list_falsely(monkeypatch):
     async def down(_uri):
         raise OSError("boom s3cret")
 
-    monkeypatch.setattr(sys, "argv", ["postgres_mcp"])
+    monkeypatch.setattr(sys, "argv", ["pgscope"])
     monkeypatch.setenv("DATABASE_URI", BOOTSTRAP)
     monkeypatch.setenv("DATABASE_AUTO_DISCOVER", "true")
     monkeypatch.setattr(server, "registry", None)
     monkeypatch.setattr(server, "database_config", None)
     monkeypatch.setattr(server, "current_access_mode", server.current_access_mode)
     # Catalog default arg binds the original function at import; patch the registry's catalog factory instead.
-    from postgres_mcp.sql import database_catalog
+    from pgscope.sql import database_catalog
 
     real_init = database_catalog.DatabaseCatalog.__init__
 
     def init(self, config, discover=down, clock=None):
         real_init(self, config, discover, clock)
 
-    with patch.object(database_catalog.DatabaseCatalog, "__init__", init), patch("postgres_mcp.server.mcp.run_stdio_async", AsyncMock()):
+    with patch.object(database_catalog.DatabaseCatalog, "__init__", init), patch("pgscope.server.mcp.run_stdio_async", AsyncMock()):
         await server.main()
         assert server.registry is not None
         text = text_at(await server.list_databases())
@@ -489,8 +489,8 @@ async def test_startup_degraded_does_not_list_falsely(monkeypatch):
 
 # --- Task 12: execute_sql and explain_query routed to the selected database ---
 
-from postgres_mcp.server import execute_sql  # noqa: E402
-from postgres_mcp.server import explain_query  # noqa: E402
+from pgscope.server import execute_sql  # noqa: E402
+from pgscope.server import explain_query  # noqa: E402
 
 _PLAN = {"Plan": {"Node Type": "Result", "Startup Cost": 0.0, "Total Cost": 0.01, "Plan Rows": 1, "Plan Width": 4}}
 
@@ -522,8 +522,8 @@ async def test_execute_sql_routes_by_database(discovery):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("access_mode", [AccessMode.RESTRICTED, AccessMode.UNRESTRICTED])
 async def test_database_selection_and_access_mode_unchanged(discovery, monkeypatch, access_mode):
-    from postgres_mcp.query_limits.config import QueryBudgetConfig
-    from postgres_mcp.query_limits.results import BoundedQueryResult
+    from pgscope.query_limits.config import QueryBudgetConfig
+    from pgscope.query_limits.results import BoundedQueryResult
 
     monkeypatch.setattr(server, "query_budget_config", QueryBudgetConfig(enabled=True))
     monkeypatch.setattr(server, "current_access_mode", access_mode)
@@ -548,7 +548,7 @@ async def test_database_selection_and_access_mode_unchanged(discovery, monkeypat
 
 @pytest.mark.asyncio
 async def test_guarded_unknown_database_never_falls_back(discovery, monkeypatch):
-    from postgres_mcp.query_limits.config import QueryBudgetConfig
+    from pgscope.query_limits.config import QueryBudgetConfig
 
     @asynccontextmanager
     async def reject(database=None):
@@ -583,7 +583,7 @@ async def test_explain_query_routes_by_database(discovery, call):
 
     with (
         patch.object(SqlDriver, "_execute_with_connection", _routing_execute(discovery, calls)),
-        patch("postgres_mcp.server.database_session", fake_database_session),
+        patch("pgscope.server.database_session", fake_database_session),
     ):
         selected = text_at(await call("app_testing"))
         selected_calls = list(calls)
@@ -620,9 +620,9 @@ def test_execute_sql_and_explain_signatures_keep_legacy_defaults():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("method", ["dta", "llm"])
 async def test_index_tools_use_database_specific_driver(method):
-    from postgres_mcp.server import analyze_query_indexes
-    from postgres_mcp.server import analyze_workload_indexes
-    from postgres_mcp.server import get_top_queries
+    from pgscope.server import analyze_query_indexes
+    from pgscope.server import analyze_workload_indexes
+    from pgscope.server import get_top_queries
 
     selected = MagicMock(name="selected_driver")
     requested: list[str | None] = []
@@ -646,13 +646,13 @@ async def test_index_tools_use_database_specific_driver(method):
     top.get_top_resource_queries = AsyncMock(return_value="ok")
     top.get_top_queries_by_time = AsyncMock(return_value="ok")
     with (
-        patch("postgres_mcp.server.get_sql_driver", fake_get_sql_driver),
-        patch("postgres_mcp.server.database_session", fake_database_session),
-        patch("postgres_mcp.server.current_access_mode", AccessMode.UNRESTRICTED),
-        patch("postgres_mcp.server.DatabaseTuningAdvisor") as dta,
-        patch("postgres_mcp.server.LLMOptimizerTool") as llm,
-        patch("postgres_mcp.server.TextPresentation", return_value=presentation) as text_presentation,
-        patch("postgres_mcp.server.TopQueriesCalc", return_value=top) as top_calc,
+        patch("pgscope.server.get_sql_driver", fake_get_sql_driver),
+        patch("pgscope.server.database_session", fake_database_session),
+        patch("pgscope.server.current_access_mode", AccessMode.UNRESTRICTED),
+        patch("pgscope.server.DatabaseTuningAdvisor") as dta,
+        patch("pgscope.server.LLMOptimizerTool") as llm,
+        patch("pgscope.server.TextPresentation", return_value=presentation) as text_presentation,
+        patch("pgscope.server.TopQueriesCalc", return_value=top) as top_calc,
     ):
         await analyze_workload_indexes(method=method, database="app_two")
         await analyze_query_indexes(["select 1"], method=method, database="app_two")
@@ -670,12 +670,12 @@ async def test_index_tools_use_database_specific_driver(method):
 
 # --- Task 14: health and extension checks keep database context ---
 
-from postgres_mcp.server import analyze_db_health  # noqa: E402
-from postgres_mcp.sql import check_hypopg_installation_status  # noqa: E402
-from postgres_mcp.sql.database_catalog import DatabaseConfigurationError  # noqa: E402
-from postgres_mcp.sql.database_catalog import DiscoveryUnavailableError  # noqa: E402
-from postgres_mcp.sql.database_registry import DatabaseUnavailableError  # noqa: E402
-from postgres_mcp.sql.database_registry import PoolCapacityError  # noqa: E402
+from pgscope.server import analyze_db_health  # noqa: E402
+from pgscope.sql import check_hypopg_installation_status  # noqa: E402
+from pgscope.sql.database_catalog import DatabaseConfigurationError  # noqa: E402
+from pgscope.sql.database_catalog import DiscoveryUnavailableError  # noqa: E402
+from pgscope.sql.database_registry import DatabaseUnavailableError  # noqa: E402
+from pgscope.sql.database_registry import PoolCapacityError  # noqa: E402
 
 
 class _Row:
@@ -702,7 +702,7 @@ def _extension_driver(db: str, installed: bool, available: bool):
 
 @pytest.mark.asyncio
 async def test_health_uses_selected_database(discovery):
-    with patch("postgres_mcp.server.DatabaseHealthTool") as tool:
+    with patch("pgscope.server.DatabaseHealthTool") as tool:
         tool.return_value.health = AsyncMock(return_value="ok")
         await analyze_db_health("index", "app_testing")
         await analyze_db_health("index")
@@ -713,7 +713,7 @@ async def test_health_uses_selected_database(discovery):
 
 @pytest.mark.asyncio
 async def test_health_legacy_positional_order():
-    with patch("postgres_mcp.server.get_sql_driver") as gsd, patch("postgres_mcp.server.DatabaseHealthTool") as tool:
+    with patch("pgscope.server.get_sql_driver") as gsd, patch("pgscope.server.DatabaseHealthTool") as tool:
 
         @asynccontextmanager
         async def fake(database=None):
@@ -744,7 +744,7 @@ async def test_health_reports_expected_errors_as_error_response(exc, expected):
         raise exc
         yield  # pragma: no cover
 
-    with patch("postgres_mcp.server.get_sql_driver", boom):
+    with patch("pgscope.server.get_sql_driver", boom):
         text = text_at(await analyze_db_health("all", "x"))
     assert text == f"Error: {expected}"
     assert str(exc) not in text
@@ -757,7 +757,7 @@ async def test_health_does_not_swallow_unexpected_errors():
         raise RuntimeError("bug")
         yield  # pragma: no cover
 
-    with patch("postgres_mcp.server.get_sql_driver", boom):
+    with patch("pgscope.server.get_sql_driver", boom):
         res = await analyze_db_health("all", "x")
         assert res.isError is True
         assert res.structuredContent["error"]["code"] == "INTERNAL_ERROR"
@@ -765,12 +765,12 @@ async def test_health_does_not_swallow_unexpected_errors():
 
 @pytest.mark.asyncio
 async def test_replication_is_labeled_instance_wide():
-    from postgres_mcp.database_health import DatabaseHealthTool
+    from pgscope.database_health import DatabaseHealthTool
 
     tool = DatabaseHealthTool(_extension_driver("db_a", True, True))
     with (
-        patch("postgres_mcp.database_health.database_health.ReplicationCalc") as rep,
-        patch("postgres_mcp.database_health.database_health.IndexHealthCalc") as idx,
+        patch("pgscope.database_health.database_health.ReplicationCalc") as rep,
+        patch("pgscope.database_health.database_health.IndexHealthCalc") as idx,
     ):
         rep.return_value.replication_health_check = AsyncMock(return_value="r")
         idx.return_value.invalid_index_check = AsyncMock(return_value="i")
@@ -784,10 +784,10 @@ async def test_replication_is_labeled_instance_wide():
 
 @pytest.mark.asyncio
 async def test_connection_health_scope_is_declared():
-    from postgres_mcp.database_health import DatabaseHealthTool
+    from pgscope.database_health import DatabaseHealthTool
 
     tool = DatabaseHealthTool(_extension_driver("db_a", True, True))
-    with patch("postgres_mcp.database_health.database_health.ConnectionHealthCalc") as conn:
+    with patch("pgscope.database_health.database_health.ConnectionHealthCalc") as conn:
         conn.return_value.connection_health_check = AsyncMock(return_value="c")
         text = await tool.health("connection")
     assert "Connection health: [instance-wide] c" in text

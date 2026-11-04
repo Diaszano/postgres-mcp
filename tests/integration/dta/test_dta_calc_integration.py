@@ -6,10 +6,10 @@ from functools import wraps
 import pytest
 import pytest_asyncio
 
-from postgres_mcp.index.dta_calc import DatabaseTuningAdvisor
-from postgres_mcp.index.index_opt_base import IndexTuningResult
-from postgres_mcp.sql import DbConnPool
-from postgres_mcp.sql import SqlDriver
+from pgscope.index.dta_calc import DatabaseTuningAdvisor
+from pgscope.index.index_opt_base import IndexTuningResult
+from pgscope.sql import DbConnPool
+from pgscope.sql import SqlDriver
 
 logger = logging.getLogger(__name__)
 

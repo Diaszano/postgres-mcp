@@ -9,14 +9,14 @@ import pytest
 import pytest_asyncio
 from psycopg import sql
 
-from postgres_mcp import server
-from postgres_mcp.application.query_service import QueryExecutionService
-from postgres_mcp.database_config import parse_database_config
-from postgres_mcp.pagination.cursors import InMemoryCursorStore
-from postgres_mcp.pagination.service import PaginationService
-from postgres_mcp.security.errors import PublicToolError
-from postgres_mcp.sql.database_catalog import DatabaseCatalog
-from postgres_mcp.sql.database_registry import DatabaseRegistry
+from pgscope import server
+from pgscope.application.query_service import QueryExecutionService
+from pgscope.database_config import parse_database_config
+from pgscope.pagination.cursors import InMemoryCursorStore
+from pgscope.pagination.service import PaginationService
+from pgscope.security.errors import PublicToolError
+from pgscope.sql.database_catalog import DatabaseCatalog
+from pgscope.sql.database_registry import DatabaseRegistry
 
 pytestmark = pytest.mark.asyncio
 DATABASES = ("app_development", "app_testing")

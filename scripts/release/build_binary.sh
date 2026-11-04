@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build standalone executable and release tarball for postgres-mcp
+# Build standalone executable and release tarball for pgscope
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
@@ -31,7 +31,7 @@ print(data["project"]["version"])
 ')
 fi
 
-echo "==> Building postgres-mcp standalone binary for ${TARGET_OS}_${TARGET_ARCH} (version: ${VERSION})"
+echo "==> Building pgscope standalone binary for ${TARGET_OS}_${TARGET_ARCH} (version: ${VERSION})"
 
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "${WORK_DIR}"' EXIT
@@ -42,8 +42,8 @@ mkdir -p "${TEMP_DIST}"
 # Compile standalone executable with PyInstaller
 uv run --with pyinstaller pyinstaller \
   --onefile \
-  --name postgres-mcp \
-  --collect-all postgres_mcp \
+  --name pgscope \
+  --collect-all pgscope \
   --collect-all psycopg \
   --collect-all pglast \
   --collect-all instructor \
@@ -53,14 +53,14 @@ uv run --with pyinstaller pyinstaller \
   --distpath "${TEMP_DIST}" \
   --workpath "${WORK_DIR}/build" \
   --specpath "${WORK_DIR}" \
-  "${REPO_ROOT}/src/postgres_mcp/__main__.py"
+  "${REPO_ROOT}/src/pgscope/__main__.py"
 
 # Package into .tar.gz archive
-ARCHIVE_NAME="postgres-mcp_${VERSION}_${TARGET_OS}_${TARGET_ARCH}.tar.gz"
+ARCHIVE_NAME="pgscope_${VERSION}_${TARGET_OS}_${TARGET_ARCH}.tar.gz"
 ARCHIVE_PATH="${OUTPUT_DIR}/${ARCHIVE_NAME}"
 
 echo "==> Creating archive ${ARCHIVE_PATH}"
-tar -czf "${ARCHIVE_PATH}" -C "${TEMP_DIST}" postgres-mcp
+tar -czf "${ARCHIVE_PATH}" -C "${TEMP_DIST}" pgscope
 
 # Compute sha256 checksum
 echo "==> Generating sha256 checksum"

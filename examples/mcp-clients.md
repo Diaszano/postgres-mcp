@@ -1,6 +1,6 @@
 # MCP Client Configuration Examples
 
-This guide provides tested, secure configuration snippets for connecting various LLM clients to **Postgres MCP**.
+This guide provides tested, secure configuration snippets for connecting various LLM clients to **pgscope**.
 
 > **Security Note:** All connection strings below use environment variable expansion (`${DATABASE_URI}`). Never hardcode plaintext database passwords in client configuration files.
 
@@ -13,7 +13,7 @@ This guide provides tested, secure configuration snippets for connecting various
   "mcpServers": {
     "postgres": {
       "command": "uvx",
-      "args": ["postgres-mcp"],
+      "args": ["pgscope"],
       "env": {
         "DATABASE_URI": "postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}",
         "DATABASE_AUTO_DISCOVER": "true",
@@ -33,7 +33,7 @@ This guide provides tested, secure configuration snippets for connecting various
   "mcpServers": {
     "postgres": {
       "command": "uv",
-      "args": ["run", "--package", "postgres-mcp", "postgres-mcp"],
+      "args": ["run", "--package", "pgscope", "pgscope"],
       "env": {
         "DATABASE_URI": "postgresql://${DB_USER}:${DB_PASSWORD}@127.0.0.1:5432/app_development",
         "DATABASE_QUERY_GUARDRAILS_ENABLED": "true"
@@ -58,7 +58,7 @@ This guide provides tested, secure configuration snippets for connecting various
         "--rm",
         "-e", "DATABASE_URI",
         "-e", "DATABASE_QUERY_GUARDRAILS_ENABLED=true",
-        "crystaldba/postgres-mcp:latest"
+        "ghcr.io/diaszano/pgscope:latest"
       ],
       "env": {
         "DATABASE_URI": "postgresql://${DB_USER}:${DB_PASSWORD}@host.docker.internal:5432/${DB_NAME}"
@@ -78,7 +78,7 @@ This guide provides tested, secure configuration snippets for connecting various
     "servers": {
       "postgres": {
         "type": "stdio",
-        "command": "postgres-mcp",
+        "command": "pgscope",
         "env": {
           "DATABASE_URI": "${DATABASE_URI}",
           "DATABASE_AUTO_DISCOVER": "true",

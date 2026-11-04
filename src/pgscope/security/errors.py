@@ -29,10 +29,10 @@ def to_public_error(exc: BaseException) -> PublicToolError:
     if isinstance(exc, PublicToolError):
         return exc
 
-    from postgres_mcp.sql.database_catalog import DatabaseConfigurationError
-    from postgres_mcp.sql.database_catalog import DiscoveryUnavailableError
-    from postgres_mcp.sql.database_registry import DatabaseUnavailableError
-    from postgres_mcp.sql.database_registry import PoolCapacityError
+    from pgscope.sql.database_catalog import DatabaseConfigurationError
+    from pgscope.sql.database_catalog import DiscoveryUnavailableError
+    from pgscope.sql.database_registry import DatabaseUnavailableError
+    from pgscope.sql.database_registry import PoolCapacityError
 
     if isinstance(exc, PoolCapacityError):
         return PublicToolError("POOL_CAPACITY_EXCEEDED", "The database connection pool is at capacity.", retryable=True)

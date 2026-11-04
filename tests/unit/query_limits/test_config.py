@@ -2,7 +2,7 @@ import logging
 
 import pytest
 
-from postgres_mcp.query_limits.config import parse_query_budget_config
+from pgscope.query_limits.config import parse_query_budget_config
 
 
 def test_query_guardrails_defaults():
@@ -43,7 +43,7 @@ def test_default_cannot_exceed_hard_limit():
 
 
 def test_disabled_mode_warning_on_remote(caplog):
-    from postgres_mcp.server import warn_if_query_guardrails_disabled
+    from pgscope.server import warn_if_query_guardrails_disabled
 
     with caplog.at_level(logging.WARNING):
         warn_if_query_guardrails_disabled("streamable-http", parse_query_budget_config({}))

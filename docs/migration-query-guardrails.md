@@ -1,6 +1,6 @@
 # Query Guardrails & Cursor Pagination Migration Guide
 
-This guide describes how to migrate to bounded query budgets and cursor pagination in **Postgres MCP**, while maintaining compatibility with legacy MCP clients.
+This guide describes how to migrate to bounded query budgets and cursor pagination in **pgscope**, while maintaining compatibility with legacy MCP clients.
 
 ## 1. Rollout and Backward Compatibility
 
@@ -49,4 +49,4 @@ To fetch subsequent rows:
 ### Cursor Lifetime and Best-Effort Semantics
 - **TTL**: Cursors expire after 300 seconds (`DATABASE_PAGINATION_CURSOR_TTL_SECONDS`). Stale or unknown cursor tokens return a structured `INVALID_CURSOR` error.
 - **Single-use consumption**: Each cursor token is single-use; retrieving a page invalidates the previous token and returns a new one if more rows remain.
-- **Best-Effort Consistency (No Snapshot Promises)**: Postgres MCP does not keep long-lived snapshot transactions open between HTTP or stdio requests to avoid transaction table bloat and lock contention. If rows are inserted, deleted, or modified between page requests, pagination operates on a best-effort basis without snapshot isolation guarantees across pages.
+- **Best-Effort Consistency (No Snapshot Promises)**: pgscope does not keep long-lived snapshot transactions open between HTTP or stdio requests to avoid transaction table bloat and lock contention. If rows are inserted, deleted, or modified between page requests, pagination operates on a best-effort basis without snapshot isolation guarantees across pages.

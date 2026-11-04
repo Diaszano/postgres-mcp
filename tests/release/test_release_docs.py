@@ -21,7 +21,7 @@ def test_guide_documents_uv_lock_and_tag() -> None:
     content = ci_cd_doc.read_text(encoding="utf-8")
     assert "uv lock --check" in content
     assert "vX.Y.Z" in content
-    assert "ghcr.io/diaszano/postgres-mcp" in content
+    assert "ghcr.io/diaszano/pgscope" in content
 
 
 def test_guide_documents_partial_release_recovery() -> None:

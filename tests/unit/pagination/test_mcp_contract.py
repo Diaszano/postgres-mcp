@@ -14,12 +14,12 @@ from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
 from mcp.server.auth.provider import AccessToken
 from mcp.server.fastmcp.tools import Tool
 
-import postgres_mcp.server as server
-from postgres_mcp.pagination.cursors import InMemoryCursorStore
-from postgres_mcp.query_limits.config import QueryBudgetConfig
-from postgres_mcp.query_limits.results import BoundedQueryResult
-from postgres_mcp.security.errors import to_public_error
-from postgres_mcp.sql import SqlDriver
+import pgscope.server as server
+from pgscope.pagination.cursors import InMemoryCursorStore
+from pgscope.query_limits.config import QueryBudgetConfig
+from pgscope.query_limits.results import BoundedQueryResult
+from pgscope.security.errors import to_public_error
+from pgscope.sql import SqlDriver
 from tests.type_helpers import text_at
 
 
@@ -97,7 +97,7 @@ def test_fetch_page_accepts_only_cursor_and_page_size():
 
 
 async def startup(monkeypatch, env):
-    monkeypatch.setattr(sys, "argv", ["postgres_mcp"])
+    monkeypatch.setattr(sys, "argv", ["pgscope"])
     for key in list(server.os.environ):
         if key.startswith("DATABASE_"):
             monkeypatch.delenv(key)

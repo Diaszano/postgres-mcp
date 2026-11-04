@@ -5,14 +5,14 @@ from typing import Any
 
 import pytest
 
-from postgres_mcp.application.query_service import QueryExecutionService
-from postgres_mcp.pagination.cursors import InMemoryCursorStore
-from postgres_mcp.pagination.service import PaginationService
-from postgres_mcp.query_limits.results import BoundedQueryResult
-from postgres_mcp.security.errors import DatabaseNotAllowedError
-from postgres_mcp.security.errors import PublicToolError
-from postgres_mcp.sql import SqlDriver
-from postgres_mcp.sql.sql_driver import query_for_validation
+from pgscope.application.query_service import QueryExecutionService
+from pgscope.pagination.cursors import InMemoryCursorStore
+from pgscope.pagination.service import PaginationService
+from pgscope.query_limits.results import BoundedQueryResult
+from pgscope.security.errors import DatabaseNotAllowedError
+from pgscope.security.errors import PublicToolError
+from pgscope.sql import SqlDriver
+from pgscope.sql.sql_driver import query_for_validation
 
 
 class PageDriver:
@@ -140,7 +140,7 @@ async def test_response_byte_budget_includes_metadata():
 
 @pytest.mark.asyncio
 async def test_response_is_serialized_before_cursor_commit(monkeypatch):
-    import postgres_mcp.pagination.service as service_module
+    import pgscope.pagination.service as service_module
 
     service, _ = make_service(PageDriver())
     page = await service.first_page("SELECT id FROM items ORDER BY id", "app", 250, 15, 100, "offset", None)

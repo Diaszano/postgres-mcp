@@ -1,10 +1,10 @@
 # Security and Production Deployment Guide
 
-This document outlines the security architecture and deployment requirements for the **Postgres MCP Server**.
+This document outlines the security architecture and deployment requirements for the **pgscope** server.
 
 ## 1. Least-Privilege Database Roles
 
-Never connect the Postgres MCP Server using the `postgres` superuser account or an account with `CREATEDB` / `CREATEROLE` privileges.
+Never connect the pgscope server using the `postgres` superuser account or an account with `CREATEDB` / `CREATEROLE` privileges.
 
 ### Recommended Role Permissions:
 ```sql

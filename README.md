@@ -1,9 +1,9 @@
 <div align="center">
 
-<img src="assets/postgres-mcp-pro.png" alt="Postgres MCP Pro Logo" width="600"/>
+<img src="assets/pgscope.png" alt="pgscope Logo" width="600"/>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Upstream PyPI version](https://img.shields.io/pypi/v/postgres-mcp)](https://pypi.org/project/postgres-mcp/)
+[![Upstream PyPI version](https://img.shields.io/pypi/v/pgscope)](https://pypi.org/project/pgscope/)
 [![Discord](https://img.shields.io/discord/1336769798603931789?label=Discord)](https://discord.gg/4BEHC7ZM)
 [![Twitter Follow](https://img.shields.io/twitter/follow/auto_dba?style=flat)](https://x.com/auto_dba)
 [![Upstream contributors](https://img.shields.io/github/contributors/crystaldba/postgres-mcp)](https://github.com/crystaldba/postgres-mcp/graphs/contributors)
@@ -26,11 +26,11 @@
 
 ## Overview
 
-**Postgres MCP Pro** is an open source Model Context Protocol (MCP) server built to support you and your AI agents throughout the **entire development process**—from initial coding, through testing and deployment, and to production tuning and maintenance.
+**pgscope** is an open source Model Context Protocol (MCP) server built to support you and your AI agents throughout the **entire development process**—from initial coding, through testing and deployment, and to production tuning and maintenance.
 
 This repository is Diaszano's fork of [crystaldba/postgres-mcp](https://github.com/crystaldba/postgres-mcp). The PyPI and contributor badges above refer to that upstream project; they do not identify a release of this fork.
 
-Postgres MCP Pro does much more than wrap a database connection.
+pgscope does much more than wrap a database connection.
 
 Features include:
 
@@ -40,15 +40,15 @@ Features include:
 - **🧠 Schema Intelligence** - context-aware SQL generation based on detailed understanding of the database schema.
 - **🛡️ Safe SQL Execution** - configurable access control, including support for read-only mode and safe SQL parsing, making it usable for both development and production.
 
-Postgres MCP Pro supports both the [Standard Input/Output (stdio)](https://modelcontextprotocol.io/docs/concepts/transports#standard-input%2Foutput-stdio) and [Server-Sent Events (SSE)](https://modelcontextprotocol.io/docs/concepts/transports#server-sent-events-sse) transports, for flexibility in different environments.
+pgscope supports both the [Standard Input/Output (stdio)](https://modelcontextprotocol.io/docs/concepts/transports#standard-input%2Foutput-stdio) and [Server-Sent Events (SSE)](https://modelcontextprotocol.io/docs/concepts/transports#server-sent-events-sse) transports, for flexibility in different environments.
 
-For additional background on why we built Postgres MCP Pro, see [our launch blog post](https://www.crystaldba.ai/blog/post/announcing-postgres-mcp-server-pro).
+For additional background on why we built pgscope, see [our launch blog post](https://www.crystaldba.ai/blog/post/announcing-pgscope-server-pro).
 
 ## Demo
 
 *From Unusable to Lightning Fast*
 - **Challenge:** We generated a movie app using an AI assistant, but the SQLAlchemy ORM code ran painfully slow.
-- **Solution:** Using Postgres MCP Pro with Cursor, we fixed the performance issues in minutes.
+- **Solution:** Using pgscope with Cursor, we fixed the performance issues in minutes.
 
 What we did:
 - 🚀 Fixed performance - including ORM queries, indexing, and caching
@@ -83,16 +83,16 @@ However, it often makes sense to use whichever method you are most familiar with
 
 ### Installation
 
-Choose one of the following methods to install this fork. The PyPI package named `postgres-mcp` is upstream; these Python commands install from Diaszano's repository. A GHCR image for this fork could not be verified, so build the Docker image locally.
+Choose one of the following methods to install this fork. The PyPI package named `pgscope` is upstream; these Python commands install from Diaszano's repository. A GHCR image for this fork could not be verified, so build the Docker image locally.
 
 #### Option 1: Using Docker
 
 Clone this repository and build its Docker image:
 
 ```bash
-git clone https://github.com/Diaszano/postgres-mcp.git
-cd postgres-mcp
-docker build -t postgres-mcp:latest .
+git clone https://github.com/Diaszano/pgscope.git
+cd pgscope
+docker build -t pgscope:latest .
 ```
 
 
@@ -101,13 +101,13 @@ docker build -t postgres-mcp:latest .
 With `pipx`, install directly from this fork:
 
 ```bash
-pipx install 'git+https://github.com/Diaszano/postgres-mcp.git'
+pipx install 'git+https://github.com/Diaszano/pgscope.git'
 ```
 
 Or install it with `uv`:
 
 ```bash
-uv tool install git+https://github.com/Diaszano/postgres-mcp.git
+uv tool install git+https://github.com/Diaszano/pgscope.git
 ```
 
 If you need to install `uv`, see the [uv installation instructions](https://docs.astral.sh/uv/getting-started/installation/).
@@ -115,12 +115,12 @@ If you need to install `uv`, see the [uv installation instructions](https://docs
 
 ### Configure Your AI Assistant
 
-We provide full instructions for configuring Postgres MCP Pro with Claude Desktop.
+We provide full instructions for configuring pgscope with Claude Desktop.
 Many MCP clients have similar configuration files, you can adapt these steps to work with the client of your choice.
 
 #### Claude Desktop Configuration
 
-You will need to edit the Claude Desktop configuration file to add Postgres MCP Pro.
+You will need to edit the Claude Desktop configuration file to add pgscope.
 The location of this file depends on your operating system:
 - MacOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - Windows: `%APPDATA%/Claude/claude_desktop_config.json`
@@ -144,7 +144,7 @@ You will now edit the `mcpServers` section of the configuration file.
         "DATABASE_URI",
         "-e",
         "DATABASE_DOCKER_REMAP_LOCALHOST",
-        "postgres-mcp:latest",
+        "pgscope:latest",
         "--access-mode=unrestricted"
       ],
       "env": {
@@ -167,8 +167,8 @@ Docker hostname remapping is disabled by default. Set `DATABASE_DOCKER_REMAP_LOC
       "command": "uvx",
       "args": [
         "--from",
-        "git+https://github.com/Diaszano/postgres-mcp.git",
-        "postgres-mcp",
+        "git+https://github.com/Diaszano/pgscope.git",
+        "pgscope",
         "--access-mode=unrestricted"
       ],
       "env": {
@@ -186,7 +186,7 @@ Docker hostname remapping is disabled by default. Set `DATABASE_DOCKER_REMAP_LOC
 {
   "mcpServers": {
     "postgres": {
-      "command": "postgres-mcp",
+      "command": "pgscope",
       "args": [
         "--access-mode=unrestricted"
       ],
@@ -208,7 +208,7 @@ Docker hostname remapping is disabled by default. Set `DATABASE_DOCKER_REMAP_LOC
       "command": "uv",
       "args": [
         "run",
-        "postgres-mcp",
+        "pgscope",
         "--access-mode=unrestricted"
       ],
       "env": {
@@ -227,7 +227,7 @@ Replace `postgresql://...` with your [Postgres database connection URI](https://
 
 ##### Access Mode
 
-Postgres MCP Pro supports multiple *access modes* to give you control over the operations that the AI agent can perform on the database:
+pgscope supports multiple *access modes* to give you control over the operations that the AI agent can perform on the database:
 - **Unrestricted Mode**: Allows full read/write access to modify data and schema when query guardrails are disabled. It is suitable for development environments.
 - **Restricted Mode**: Limits operations to read-only transactions, validates SQL, and limits execution time. With query guardrails disabled, `execute_sql` accepts `SELECT`, `EXPLAIN` (without `ANALYZE`), and `SHOW`; standalone `ANALYZE` and `VACUUM` are rejected. Enabling query guardrails further limits `execute_sql` to one safe read-only row-producing query in either access mode; see the migration note below.
 
@@ -245,14 +245,14 @@ Many MCP clients have similar configuration files to Claude Desktop, and you can
 
 ## SSE Transport
 
-Postgres MCP Pro supports the [SSE transport](https://modelcontextprotocol.io/docs/concepts/transports#server-sent-events-sse), which allows multiple MCP clients to share one server, possibly a remote server.
+pgscope supports the [SSE transport](https://modelcontextprotocol.io/docs/concepts/transports#server-sent-events-sse), which allows multiple MCP clients to share one server, possibly a remote server.
 To use the SSE transport, you need to start the server with the `--transport=sse` option.
 
 For a local client, run the server on the same host:
 
 ```bash
 DATABASE_URI='postgresql://username:password@localhost:5432/dbname' \
-  uvx --from git+https://github.com/Diaszano/postgres-mcp.git postgres-mcp --access-mode=restricted --transport=sse
+  uvx --from git+https://github.com/Diaszano/pgscope.git pgscope --access-mode=restricted --transport=sse
 ```
 
 Then update your MCP client configuration to call the the MCP server.
@@ -298,7 +298,7 @@ Configure the secret through your service's secret store or environment, then ru
 export MCP_HTTP_ALLOWED_HOSTS='mcp.example.com'
 export MCP_HTTP_ALLOWED_ORIGINS='https://client.example.com'
 # MCP_HTTP_AUTH_TOKEN and DATABASE_URI are supplied securely by the service environment.
-uvx --from git+https://github.com/Diaszano/postgres-mcp.git postgres-mcp --access-mode=restricted --transport=streamable-http
+uvx --from git+https://github.com/Diaszano/pgscope.git pgscope --access-mode=restricted --transport=streamable-http
 ```
 
 Use `/mcp` for Streamable HTTP or `--transport=sse` with `/sse` and `/messages/` for SSE. Clients must send `Authorization: Bearer <secret>` on every HTTP request, including SSE message POSTs. Anonymous or invalid-token requests receive 401. Authenticated requests with an unlisted Host receive 421, and those with an unlisted Origin receive 403. Native clients may omit Origin. The MCP SDK exposes the stable principal `configured-http-client`; all holders of this shared secret have the same database access. This is a pre-provisioned bearer credential, without an OAuth login or per-user authorization service. Rotate it by changing the secret and restarting the process.
@@ -309,14 +309,14 @@ The authentication, principal and Host/Origin path is exercised against MCP SDK 
 
 ## Multiple Databases (Optional)
 
-By default Postgres MCP Pro talks to the single database named in `DATABASE_URI`, exactly as before.
+By default pgscope talks to the single database named in `DATABASE_URI`, exactly as before.
 Set `DATABASE_AUTO_DISCOVER=true` to let the agent discover and choose among the databases of the same PostgreSQL instance.
 Every tool accepts an optional `database` argument; when it is omitted the default database is used, never the one used by a previous call.
 
 ### Legacy mode (default)
 
 ```bash
-DATABASE_URI='postgresql://user:password@localhost:5432/app_development' uvx --from git+https://github.com/Diaszano/postgres-mcp.git postgres-mcp
+DATABASE_URI='postgresql://user:password@localhost:5432/app_development' uvx --from git+https://github.com/Diaszano/pgscope.git pgscope
 ```
 
 - One connection pool, to the database in the URI (a URI passed as a command-line argument still works).
@@ -334,7 +334,7 @@ DATABASE_DEFAULT_DATABASE=app_development
 DATABASE_ALLOWED_DATABASES=app_development,app_testing,analytics
 DATABASE_EXCLUDED_DATABASES=postgres
 
-uvx --from git+https://github.com/Diaszano/postgres-mcp.git postgres-mcp
+uvx --from git+https://github.com/Diaszano/pgscope.git pgscope
 ```
 
 | Variable | Default | Meaning |
@@ -443,9 +443,9 @@ The same call, as tool arguments: `{"sql": "SELECT current_database()", "databas
 
 To enable index tuning and comprehensive performance analysis you need to load the `pg_stat_statements` and `hypopg` extensions on your database.
 
-- The `pg_stat_statements` extension allows Postgres MCP Pro to analyze query execution statistics.
+- The `pg_stat_statements` extension allows pgscope to analyze query execution statistics.
 For example, this allows it to understand which queries are running slow or consuming significant resources.
-- The `hypopg` extension allows Postgres MCP Pro to simulate the behavior of the Postgres query planner after adding indexes.
+- The `hypopg` extension allows pgscope to simulate the behavior of the Postgres query planner after adding indexes.
 
 ### Installing extensions on AWS RDS, Azure SQL, or Google Cloud SQL
 
@@ -494,12 +494,12 @@ Ask:
 
 The [MCP standard](https://modelcontextprotocol.io/) defines various types of endpoints: Tools, Resources, Prompts, and others.
 
-Postgres MCP Pro provides functionality via [MCP tools](https://modelcontextprotocol.io/docs/concepts/tools) alone.
+pgscope provides functionality via [MCP tools](https://modelcontextprotocol.io/docs/concepts/tools) alone.
 We chose this approach because the [MCP client ecosystem](https://modelcontextprotocol.io/clients) has widespread support for MCP tools.
 This contrasts with the approach of other Postgres MCP servers, including the [Reference Postgres MCP Server](https://github.com/modelcontextprotocol/servers-archived/tree/main/src/postgres), which use [MCP resources](https://modelcontextprotocol.io/docs/concepts/resources) to expose schema information.
 
 
-Postgres MCP Pro Tools (all except `list_databases` and `fetch_query_page` accept an optional `database` argument, see [Multiple Databases](#multiple-databases-optional)):
+pgscope Tools (all except `list_databases` and `fetch_query_page` accept an optional `database` argument, see [Multiple Databases](#multiple-databases-optional)):
 
 | Tool Name | Description |
 |-----------|-------------|
@@ -537,24 +537,24 @@ Postgres MCP Pro Tools (all except `list_databases` and `fetch_query_page` accep
 **Postgres Utilities**
 - [Dexter](https://github.com/DexterDB/dexter). A tool for generating and testing hypothetical indexes on PostgreSQL.
 - [PgHero](https://github.com/ankane/pghero). A performance dashboard for Postgres, with recommendations.
-Postgres MCP Pro incorporates health checks from PgHero.
+pgscope incorporates health checks from PgHero.
 - [PgTune](https://github.com/le0pard/pgtune?tab=readme-ov-file). Heuristics for tuning Postgres configuration.
 
 ## Frequently Asked Questions
 
-*How is Postgres MCP Pro different from other Postgres MCP servers?*
+*How is pgscope different from other Postgres MCP servers?*
 There are many MCP servers allow an AI agent to run queries against a Postgres database.
-Postgres MCP Pro does that too, but also adds tools for understanding and improving the performance of your Postgres database.
+pgscope does that too, but also adds tools for understanding and improving the performance of your Postgres database.
 For example, it implements a version of the [Anytime Algorithm of Database Tuning Advisor for Microsoft SQL Server](https://www.microsoft.com/en-us/research/wp-content/uploads/2020/06/Anytime-Algorithm-of-Database-Tuning-Advisor-for-Microsoft-SQL-Server.pdf), a modern industrial-strength algorithm for automatic index tuning.
 
-| Postgres MCP Pro | Other Postgres MCP Servers |
+| pgscope | Other Postgres MCP Servers |
 |--------------|----------------------------|
 | ✅ Deterministic database health checks | ❌ Unrepeatable LLM-generated health queries |
 | ✅ Principled indexing search strategies | ❌ Gen-AI guesses at indexing improvements |
 | ✅ Workload analysis to find top problems | ❌ Inconsistent problem analysis |
 | ✅ Simulates performance improvements | ❌ Try it yourself and see if it works |
 
-Postgres MCP Pro complements generative AI by adding deterministic tools and classical optimization algorithms
+pgscope complements generative AI by adding deterministic tools and classical optimization algorithms
 The combination is both reliable and flexible.
 
 
@@ -562,11 +562,11 @@ The combination is both reliable and flexible.
 LLMs are invaluable for tasks that involve ambiguity, reasoning, or natural language.
 When compared to procedural code, however, they can be slow, expensive, non-deterministic, and sometimes produce unreliable results.
 In the case of database tuning, we have well established algorithms, developed over decades, that are proven to work.
-Postgres MCP Pro lets you combine the best of both worlds by pairing LLMs with classical optimization algorithms and other procedural tools.
+pgscope lets you combine the best of both worlds by pairing LLMs with classical optimization algorithms and other procedural tools.
 
-*How do you test Postgres MCP Pro?*
-Testing is critical to ensuring that Postgres MCP Pro is reliable and accurate.
-We are building out a suite of AI-generated adversarial workloads designed to challenge Postgres MCP Pro and ensure it performs under a broad variety of scenarios.
+*How do you test pgscope?*
+Testing is critical to ensuring that pgscope is reliable and accurate.
+We are building out a suite of AI-generated adversarial workloads designed to challenge pgscope and ensure it performs under a broad variety of scenarios.
 
 *What Postgres versions are supported?*
 Our testing presently focuses on Postgres 15, 16, and 17.
@@ -585,7 +585,7 @@ You can also contact us on [Discord](https://discord.gg/4BEHC7ZM).
 
 ## Technical Notes
 
-This section includes a high-level overview technical considerations that influenced the design of Postgres MCP Pro.
+This section includes a high-level overview technical considerations that influenced the design of pgscope.
 
 ### Index Tuning
 
@@ -593,11 +593,11 @@ Developers know that missing indexes are one of the most common causes of databa
 Indexes provide access methods that allow Postgres to quickly locate data that is required to execute a query.
 When tables are small, indexes make little difference, but as the size of the data grows, the difference in algorithmic complexity between a table scan and an index lookup becomes significant (typically *O*(*n*) vs *O*(*log* *n*), potentially more if joins on multiple tables are involved).
 
-Generating suggested indexes in Postgres MCP Pro proceeds in several stages:
+Generating suggested indexes in pgscope proceeds in several stages:
 
 1. *Identify SQL queries in need of tuning*.
     If you know you are having a problem with a specific SQL query you can provide it.
-    Postgres MCP Pro can also analyze the workload to identify index tuning targets.
+    pgscope can also analyze the workload to identify index tuning targets.
     To do this, it relies on the `pg_stat_statements` extension, which records the runtime and resource consumption of each query.
 
     A query is a candidate for index tuning if it is a top resource consumer, either on a per-execution basis or in aggregate.
@@ -606,7 +606,7 @@ Generating suggested indexes in Postgres MCP Pro proceeds in several stages:
     Agents may also call `get_top_queries`, which accepts a parameter for mean vs. total execution time, then pass these queries `analyze_query_indexes` to get index recommendations.
 
     Sophisticated index tuning systems use "workload compression" to produce a representative subset of queries that reflects the characteristics of the workload as a whole, reducing the problem for downstream algorithms.
-    Postgres MCP Pro performs a limited form of workload compression by normalizing queries so that those generated from the same template appear as one.
+    pgscope performs a limited form of workload compression by normalizing queries so that those generated from the same template appear as one.
     It weights each query equally, a simplification that works when the benefits to indexing are large.
 
 2. *Generate candidate indexes*
@@ -657,7 +657,7 @@ This give the LLM additional context that it can use when responding to the inde
 
 ### Experimental: Index Tuning by LLM
 
-Postgres MCP Pro includes an experimental index tuning feature based on [Optimization by LLM](https://arxiv.org/abs/2309.03409).
+pgscope includes an experimental index tuning feature based on [Optimization by LLM](https://arxiv.org/abs/2309.03409).
 Instead of using heuristics to explore possible index configurations, we provide the database schema and query plans to an LLM and ask it to propose index configurations.
 We then use `hypopg` to predict performance with the proposed indexes, then feed those results back into the LLM to produce a new set of suggestions.
 We repeat this process until multiple rounds of iteration produce no further improvements.
@@ -671,7 +671,7 @@ In order to perform index optimization by LLM, you must provide an OpenAI API ke
 ### Database Health
 
 Database health checks identify tuning opportunities and maintenance needs before they lead to critical issues.
-In the present release, Postgres MCP Pro adapts the database health checks directly from [PgHero](https://github.com/ankane/pghero).
+In the present release, pgscope adapts the database health checks directly from [PgHero](https://github.com/ankane/pghero).
 We are working to fully validate these checks and may extend them in the future.
 
 - *Index Health*. Looks for unused indexes, duplicate indexes, and indexes that are bloated. Bloated indexes make inefficient use of database pages.
@@ -696,7 +696,7 @@ We are working to fully validate these checks and may extend them in the future.
 
 ### Postgres Client Library
 
-Postgres MCP Pro uses [psycopg3](https://www.psycopg.org/) to connect to Postgres using asynchronous I/O.
+pgscope uses [psycopg3](https://www.psycopg.org/) to connect to Postgres using asynchronous I/O.
 Under the hood, psycopg3 uses the [libpq](https://www.postgresql.org/docs/current/libpq.html) library to connect to Postgres, providing access to the full Postgres feature set and an underlying implementation fully supported by the Postgres community.
 
 Some other Python-based MCP servers use [asyncpg](https://github.com/MagicStack/asyncpg), which may simplify installation by eliminating the `libpq` dependency.
@@ -709,7 +709,7 @@ We remain open to revising this decision in the future.
 
 ### Connection Configuration
 
-Like the [Reference PostgreSQL MCP Server](https://github.com/modelcontextprotocol/servers-archived/tree/main/src/postgres), Postgres MCP Pro takes Postgres connection information at startup.
+Like the [Reference PostgreSQL MCP Server](https://github.com/modelcontextprotocol/servers-archived/tree/main/src/postgres), pgscope takes Postgres connection information at startup.
 This is convenient for users who always connect to the same database but can be cumbersome when users switch databases.
 
 An alternative approach, taken by [PG-MCP](https://github.com/stuzero/pg-mcp-server), is provide connection details via MCP tool calls at the time of use.
@@ -746,15 +746,15 @@ AI amplifies longstanding challenges of protecting databases from a range of thr
 Whether the threat is accidental or malicious, a similar security framework applies, with aims that fall into three categories: confidentiality, integrity, and availability.
 The familiar tension between convenience and safety is also evident and pronounced.
 
-Postgres MCP Pro's protected SQL execution mode focuses on integrity.
+pgscope's protected SQL execution mode focuses on integrity.
 In the context of MCP, we are most concerned with LLM-generated SQL causing damage—for example, unintended data modification or deletion, or other changes that might circumvent an organization's change management process.
 
 The simplest way to provide integrity is to ensure that all SQL executed against the database is read-only.
 One way to do this is by creating a database user with read-only access permissions.
 While this is a good approach, many find this cumbersome in practice.
-Postgres does not provide a way to place a connection or session into read-only mode, so Postgres MCP Pro uses a more complex approach to ensure read-only SQL execution on top of a read-write connection.
+Postgres does not provide a way to place a connection or session into read-only mode, so pgscope uses a more complex approach to ensure read-only SQL execution on top of a read-write connection.
 
-Postgres MCP Provides a read-only transaction mode that prevents data and schema modifications.
+pgscope provides a read-only transaction mode that prevents data and schema modifications.
 Like the [Reference PostgreSQL MCP Server](https://github.com/modelcontextprotocol/servers-archived/tree/main/src/postgres), we use read-only transactions to provide protected SQL execution.
 
 To make this mechanism robust, we need to ensure that the SQL does not somehow circumvent the read-only transaction mode, say by issuing a `COMMIT` or `ROLLBACK` statement and then beginning a new transaction.
@@ -770,7 +770,7 @@ We reject any SQL that contains `commit` or `rollback` statements.
 Helpfully, the popular Postgres stored procedure languages, including PL/pgSQL and PL/Python, do not allow for `COMMIT` or `ROLLBACK` statements.
 If you have unsafe stored procedure languages enabled on your database, then our read-only protections could be circumvented.
 
-At present, Postgres MCP Pro provides two levels of protection for the database, one at either extreme of the convenience/safety spectrum.
+At present, pgscope provides two levels of protection for the database, one at either extreme of the convenience/safety spectrum.
 - "Unrestricted" provides maximum flexibility.
 It is suitable for development environments where speed and flexibility are paramount, and where there is no need to protect valuable or sensitive data.
 - "Restricted" provides a balance between flexibility and safety.
@@ -784,9 +784,9 @@ Restricted mode is limited to read-only operations, and we limit query execution
 We may add measures in the future to make sure that restricted mode is safe to use with production databases.
 
 
-## Postgres MCP Pro Development
+## pgscope Development
 
-The instructions below are for developers who want to work on Postgres MCP Pro, or users who prefer to install Postgres MCP Pro from source.
+The instructions below are for developers who want to work on pgscope, or users who prefer to install pgscope from source.
 
 ### Local Development Setup
 
@@ -799,8 +799,8 @@ The instructions below are for developers who want to work on Postgres MCP Pro, 
 2. **Clone the repository**:
 
    ```bash
-   git clone https://github.com/Diaszano/postgres-mcp.git
-   cd postgres-mcp
+   git clone https://github.com/Diaszano/pgscope.git
+   cd pgscope
    ```
 
 3. **Install dependencies**:
@@ -811,5 +811,5 @@ The instructions below are for developers who want to work on Postgres MCP Pro, 
 
 4. **Run the server**:
    ```bash
-   uv run postgres-mcp "postgres://user:password@localhost:5432/dbname"
+   uv run pgscope "postgres://user:password@localhost:5432/dbname"
    ```

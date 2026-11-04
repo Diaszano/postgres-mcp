@@ -93,7 +93,7 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/diaszano/postgres-mcp:sha-${{ needs.validate-ref.outputs.commit_sha }}
+          tags: ghcr.io/diaszano/pgscope:sha-${{ needs.validate-ref.outputs.commit_sha }}
           build-args: |
             REVISION=${{ needs.validate-ref.outputs.commit_sha }}
             VERSION=${{ needs.validate-ref.outputs.version }}
@@ -105,4 +105,4 @@ jobs:
           IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
           IMAGE_TAG: ${{ inputs.tag }}
         run: |
-          bash scripts/ci/promote_image.sh "ghcr.io/diaszano/postgres-mcp" "$IMAGE_DIGEST" "$IMAGE_TAG"
+          bash scripts/ci/promote_image.sh "ghcr.io/diaszano/pgscope" "$IMAGE_DIGEST" "$IMAGE_TAG"

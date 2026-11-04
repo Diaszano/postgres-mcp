@@ -3,8 +3,8 @@
 from collections.abc import Callable
 from typing import Any
 
-from postgres_mcp.database_health import DatabaseHealthTool
-from postgres_mcp.top_queries import TopQueriesCalc
+from pgscope.database_health import DatabaseHealthTool
+from pgscope.top_queries import TopQueriesCalc
 
 
 class HealthInspectionService:

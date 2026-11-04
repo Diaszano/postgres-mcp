@@ -3,8 +3,8 @@
 import psycopg
 import pytest
 
-from postgres_mcp.sql.sql_driver import DbConnPool
-from postgres_mcp.sql.sql_driver import SqlDriver
+from pgscope.sql.sql_driver import DbConnPool
+from pgscope.sql.sql_driver import SqlDriver
 from tests.type_helpers import first_item
 
 

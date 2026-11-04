@@ -26,7 +26,7 @@ from psycopg.conninfo import conninfo_to_dict
 from pydantic import Field
 from pydantic import validate_call
 
-from postgres_mcp.index.dta_calc import DatabaseTuningAdvisor
+from pgscope.index.dta_calc import DatabaseTuningAdvisor
 
 from .application.database_service import DatabaseInspectionService
 from .application.health_service import HealthInspectionService
@@ -66,7 +66,7 @@ from .sql.database_session import database_session
 from .top_queries import TopQueriesCalc
 
 # Initialize FastMCP with default settings
-mcp = FastMCP("postgres-mcp")
+mcp = FastMCP("pgscope")
 
 # Constants
 PG_STAT_STATEMENTS = "pg_stat_statements"

@@ -3,11 +3,11 @@ import json
 from mcp import types
 from psycopg import OperationalError
 
-from postgres_mcp.mcp_response import error_result
-from postgres_mcp.mcp_response import format_mcp_result
-from postgres_mcp.mcp_response import success_result
-from postgres_mcp.security.errors import PublicToolError
-from postgres_mcp.security.errors import SQLValidationError
+from pgscope.mcp_response import error_result
+from pgscope.mcp_response import format_mcp_result
+from pgscope.mcp_response import success_result
+from pgscope.security.errors import PublicToolError
+from pgscope.security.errors import SQLValidationError
 from tests.type_helpers import text_at
 
 

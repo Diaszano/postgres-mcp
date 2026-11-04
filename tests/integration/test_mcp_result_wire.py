@@ -7,14 +7,14 @@ import pytest
 from mcp.server.fastmcp import FastMCP
 from mcp.shared.memory import create_connected_server_and_client_session
 
-import postgres_mcp.server as app
-from postgres_mcp.database_config import parse_database_config
-from postgres_mcp.mcp_response import error_result
-from postgres_mcp.mcp_response import format_mcp_result
-from postgres_mcp.mcp_response import success_result
-from postgres_mcp.security.errors import PublicToolError
-from postgres_mcp.sql.database_catalog import DatabaseCatalog
-from postgres_mcp.sql.database_registry import DatabaseRegistry
+import pgscope.server as app
+from pgscope.database_config import parse_database_config
+from pgscope.mcp_response import error_result
+from pgscope.mcp_response import format_mcp_result
+from pgscope.mcp_response import success_result
+from pgscope.security.errors import PublicToolError
+from pgscope.sql.database_catalog import DatabaseCatalog
+from pgscope.sql.database_registry import DatabaseRegistry
 from tests.type_helpers import text_at
 
 
@@ -94,7 +94,7 @@ async def test_restricted_database_tools_work_over_mcp_wire(multidb_postgres, mo
     monkeypatch.setattr(app, "registry", registry)
     monkeypatch.setattr(app, "current_access_mode", app.AccessMode.RESTRICTED)
 
-    wire_server = FastMCP("postgres-mcp-integration")
+    wire_server = FastMCP("pgscope-integration")
     wire_server.add_tool(app.list_databases)
     wire_server.add_tool(app.execute_sql)
     try:

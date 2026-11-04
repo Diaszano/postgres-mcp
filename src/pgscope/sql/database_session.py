@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 from psycopg.conninfo import conninfo_to_dict
 
-from postgres_mcp.security.errors import DatabaseNotAllowedError
+from pgscope.security.errors import DatabaseNotAllowedError
 
 from .database_registry import DatabaseRegistry
 from .sql_driver import DbConnPool

@@ -4,9 +4,9 @@ import psycopg
 import pytest
 from psycopg import sql
 
-from postgres_mcp.security.errors import SQLValidationError
-from postgres_mcp.sql import SafeSqlDriver
-from postgres_mcp.sql import SqlDriver
+from pgscope.security.errors import SQLValidationError
+from pgscope.sql import SafeSqlDriver
+from pgscope.sql import SqlDriver
 from tests.type_helpers import first_item
 
 

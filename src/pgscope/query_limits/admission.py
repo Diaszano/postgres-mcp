@@ -6,7 +6,7 @@ from typing import TypeVar
 
 from psycopg.errors import QueryCanceled
 
-from postgres_mcp.security.errors import PublicToolError
+from pgscope.security.errors import PublicToolError
 
 T = TypeVar("T")
 _query_deadline: ContextVar[float | None] = ContextVar("query_deadline", default=None)

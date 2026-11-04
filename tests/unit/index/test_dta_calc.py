@@ -13,11 +13,11 @@ import pytest_asyncio
 from pglast import parse_sql
 from pglast.ast import SelectStmt
 
-from postgres_mcp.artifacts import ExplainPlanArtifact
-from postgres_mcp.index.dta_calc import ColumnCollector
-from postgres_mcp.index.dta_calc import ConditionColumnCollector
-from postgres_mcp.index.dta_calc import DatabaseTuningAdvisor
-from postgres_mcp.index.dta_calc import IndexRecommendation
+from pgscope.artifacts import ExplainPlanArtifact
+from pgscope.index.dta_calc import ColumnCollector
+from pgscope.index.dta_calc import ConditionColumnCollector
+from pgscope.index.dta_calc import DatabaseTuningAdvisor
+from pgscope.index.dta_calc import IndexRecommendation
 
 logger = getLogger(__name__)
 
@@ -30,7 +30,7 @@ async def test_existing_index_literals_are_not_logged(create_dta, caplog):
         patch.object(create_dta, "generate_candidates", AsyncMock(return_value=[])),
         patch.object(create_dta, "_evaluate_configuration_cost", AsyncMock(return_value=1.0)),
         patch.object(create_dta, "_enumerate_greedy", AsyncMock(return_value=(set(), 1.0))),
-        caplog.at_level("DEBUG", logger="postgres_mcp.index.dta_calc"),
+        caplog.at_level("DEBUG", logger="pgscope.index.dta_calc"),
     ):
         create_dta.max_runtime_seconds = 0
         await create_dta._generate_recommendations([])

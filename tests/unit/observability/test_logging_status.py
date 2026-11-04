@@ -3,9 +3,9 @@ import logging
 
 import pytest
 
-from postgres_mcp.observability.logging import get_operation_id
-from postgres_mcp.observability.logging import operation_context
-from postgres_mcp.observability.status import RuntimeStatus
+from pgscope.observability.logging import get_operation_id
+from pgscope.observability.logging import operation_context
+from pgscope.observability.status import RuntimeStatus
 
 
 @pytest.mark.asyncio
@@ -39,8 +39,8 @@ def test_readiness_not_equal_database_health():
 
 
 def test_sanitized_failure_logging(caplog):
-    from postgres_mcp.security.errors import PublicToolError
-    from postgres_mcp.security.errors import log_public_error
+    from pgscope.security.errors import PublicToolError
+    from pgscope.security.errors import log_public_error
 
     logger = logging.getLogger("test_logger")
     caplog.set_level(logging.ERROR)

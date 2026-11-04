@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from postgres_mcp.query_limits.admission import QueryAdmission
+from pgscope.query_limits.admission import QueryAdmission
 
 
 @pytest.mark.performance

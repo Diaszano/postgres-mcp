@@ -14,10 +14,10 @@ from psycopg import AsyncConnection
 from psycopg import sql
 from test_multi_database_integration import _make_env
 
-from postgres_mcp import server
-from postgres_mcp.index.index_opt_base import IndexTuningBase
-from postgres_mcp.sql import SqlDriver
-from postgres_mcp.sql.database_session import database_session
+from pgscope import server
+from pgscope.index.index_opt_base import IndexTuningBase
+from pgscope.sql import SqlDriver
+from pgscope.sql.database_session import database_session
 from tests.type_helpers import text_at
 
 pytestmark = pytest.mark.asyncio

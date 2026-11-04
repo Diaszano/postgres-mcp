@@ -3,8 +3,8 @@
 from collections.abc import Callable
 from typing import Any
 
-from postgres_mcp.security.errors import PublicToolError
-from postgres_mcp.sql import SafeSqlDriver
+from pgscope.security.errors import PublicToolError
+from pgscope.sql import SafeSqlDriver
 
 
 class DatabaseInspectionService:

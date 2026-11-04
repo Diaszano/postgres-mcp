@@ -1,5 +1,5 @@
 name: Bug Report
-description: Report an issue or bug with postgres-mcp
+description: Report an issue or bug with pgscope
 labels: ["bug"]
 body:
   - type: markdown
@@ -28,8 +28,8 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: OS, Python version, PostgreSQL version, and postgres-mcp version.
-      placeholder: "Linux, Python 3.12, PostgreSQL 16, postgres-mcp 0.3.0"
+      description: OS, Python version, PostgreSQL version, and pgscope version.
+      placeholder: "Linux, Python 3.12, PostgreSQL 16, pgscope 0.3.0"
     validations:
       required: true
   - type: textarea

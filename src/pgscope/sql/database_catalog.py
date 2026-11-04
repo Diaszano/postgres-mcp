@@ -7,8 +7,8 @@ from collections.abc import Callable
 
 from psycopg import AsyncConnection
 
-from postgres_mcp.database_config import DatabaseConfig
-from postgres_mcp.security.errors import DatabaseNotAllowedError
+from pgscope.database_config import DatabaseConfig
+from pgscope.security.errors import DatabaseNotAllowedError
 
 _DISCOVERY_SQL = """
 SELECT datname

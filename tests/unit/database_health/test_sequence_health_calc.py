@@ -2,7 +2,7 @@
 
 import pytest
 
-from postgres_mcp.database_health.sequence_health_calc import SequenceHealthCalc
+from pgscope.database_health.sequence_health_calc import SequenceHealthCalc
 
 
 class TestParseSequenceName:

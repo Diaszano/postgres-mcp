@@ -4,10 +4,10 @@ import pytest
 import pytest_asyncio
 from psycopg.pq import TransactionStatus
 
-from postgres_mcp.query_limits.admission import QueryAdmission
-from postgres_mcp.security.errors import PublicToolError
-from postgres_mcp.sql.sql_driver import DbConnPool
-from postgres_mcp.sql.sql_driver import SqlDriver
+from pgscope.query_limits.admission import QueryAdmission
+from pgscope.security.errors import PublicToolError
+from pgscope.sql.sql_driver import DbConnPool
+from pgscope.sql.sql_driver import SqlDriver
 from tests.type_helpers import first_item
 
 

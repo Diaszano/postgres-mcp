@@ -83,7 +83,7 @@ def _fake_tools(tmp_path: Path) -> tuple[Path, Path, Path]:
 def _run_promotion(
     tmp_path: Path,
     *,
-    repository: str = "ghcr.io/diaszano/postgres-mcp",
+    repository: str = "ghcr.io/diaszano/pgscope",
     digest: str = "sha256:" + "a" * 64,
     tag: str = "v0.3.2",
     manifests: dict[str, str] | None = None,
@@ -126,16 +126,16 @@ def test_promote_image_calculates_aliases(tmp_path: Path) -> None:
         "imagetools",
         "create",
         "--tag",
-        "ghcr.io/diaszano/postgres-mcp:v0.3.2",
+        "ghcr.io/diaszano/pgscope:v0.3.2",
         "--tag",
-        "ghcr.io/diaszano/postgres-mcp:0.3.2",
+        "ghcr.io/diaszano/pgscope:0.3.2",
         "--tag",
-        "ghcr.io/diaszano/postgres-mcp:0.3",
+        "ghcr.io/diaszano/pgscope:0.3",
         "--tag",
-        "ghcr.io/diaszano/postgres-mcp:0",
+        "ghcr.io/diaszano/pgscope:0",
         "--tag",
-        "ghcr.io/diaszano/postgres-mcp:latest",
-        "ghcr.io/diaszano/postgres-mcp@sha256:" + "a" * 64,
+        "ghcr.io/diaszano/pgscope:latest",
+        "ghcr.io/diaszano/pgscope@sha256:" + "a" * 64,
     ]
     assert "--platform linux/amd64" in trivy_calls
     assert "--platform linux/arm64" in trivy_calls
@@ -153,9 +153,9 @@ def test_promote_image_handles_ghcr_not_found_format(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("repository", "digest", "tag"),
     [
-        ("ghcr.io/diaszano/postgres-mcp", "sha256:bad", "v0.3.2"),
-        ("ghcr.io/diaszano/postgres-mcp", "sha256:" + "a" * 64, "v0.3.2;touch /tmp/pwned"),
-        ("ghcr.io/diaszano/postgres-mcp;touch /tmp/pwned", "sha256:" + "a" * 64, "v0.3.2"),
+        ("ghcr.io/diaszano/pgscope", "sha256:bad", "v0.3.2"),
+        ("ghcr.io/diaszano/pgscope", "sha256:" + "a" * 64, "v0.3.2;touch /tmp/pwned"),
+        ("ghcr.io/diaszano/pgscope;touch /tmp/pwned", "sha256:" + "a" * 64, "v0.3.2"),
     ],
 )
 def test_invalid_inputs_fail_without_promotion(tmp_path: Path, repository: str, digest: str, tag: str) -> None:
@@ -183,7 +183,7 @@ def test_scan_failure_on_either_platform_blocks_promotion(tmp_path: Path, platfo
 
 @pytest.mark.parametrize("version_tag", ["v0.3.2", "0.3.2"])
 def test_existing_immutable_version_tag_cannot_change_digest(tmp_path: Path, version_tag: str) -> None:
-    repository = "ghcr.io/diaszano/postgres-mcp"
+    repository = "ghcr.io/diaszano/pgscope"
     result, calls, _ = _run_promotion(tmp_path, manifests={f"{repository}:{version_tag}": "sha256:" + "b" * 64})
 
     assert result.returncode != 0
@@ -200,7 +200,7 @@ def test_unknown_manifest_state_fails_closed(tmp_path: Path) -> None:
 
 
 def test_recovery_never_downgrades_newer_aliases(tmp_path: Path) -> None:
-    repository = "ghcr.io/diaszano/postgres-mcp"
+    repository = "ghcr.io/diaszano/pgscope"
     newer = "sha256:" + "b" * 64
     aliases = [f"{repository}:1.2", f"{repository}:1", f"{repository}:latest"]
     manifests = {alias: newer for alias in aliases}
@@ -216,7 +216,7 @@ def test_recovery_never_downgrades_newer_aliases(tmp_path: Path) -> None:
 
 
 def test_unreadable_alias_version_fails_without_guessing(tmp_path: Path) -> None:
-    repository = "ghcr.io/diaszano/postgres-mcp"
+    repository = "ghcr.io/diaszano/pgscope"
     result, calls, _ = _run_promotion(
         tmp_path,
         tag="v1.2.3",
@@ -235,7 +235,7 @@ def test_release_version_comparison_is_numeric() -> None:
 
 
 def test_existing_alias_with_same_digest_is_idempotent(tmp_path: Path) -> None:
-    repository = "ghcr.io/diaszano/postgres-mcp"
+    repository = "ghcr.io/diaszano/pgscope"
     digest = "sha256:" + "a" * 64
     tags = ["v1.2.3", "1.2.3", "1.2", "1", "latest"]
     manifests = {f"{repository}:{tag}": digest for tag in tags}

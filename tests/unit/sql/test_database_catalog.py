@@ -6,14 +6,14 @@ from unittest.mock import patch
 
 import pytest
 
-from postgres_mcp.database_config import DatabaseConfig
-from postgres_mcp.security.errors import DatabaseNotAllowedError
-from postgres_mcp.security.errors import to_public_error
-from postgres_mcp.sql import database_catalog
-from postgres_mcp.sql.database_catalog import DatabaseCatalog
-from postgres_mcp.sql.database_catalog import DatabaseConfigurationError
-from postgres_mcp.sql.database_catalog import DiscoveryUnavailableError
-from postgres_mcp.sql.database_catalog import discover_postgres_databases
+from pgscope.database_config import DatabaseConfig
+from pgscope.security.errors import DatabaseNotAllowedError
+from pgscope.security.errors import to_public_error
+from pgscope.sql import database_catalog
+from pgscope.sql.database_catalog import DatabaseCatalog
+from pgscope.sql.database_catalog import DatabaseConfigurationError
+from pgscope.sql.database_catalog import DiscoveryUnavailableError
+from pgscope.sql.database_catalog import discover_postgres_databases
 
 URI = "postgresql://dev:s3cret@localhost:5432/postgres"
 

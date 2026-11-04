@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import pytest
 
-from postgres_mcp.security.errors import PublicToolError
+from pgscope.security.errors import PublicToolError
 
 
 class GeneratedCursor:
@@ -26,8 +26,8 @@ class GeneratedCursor:
 
 
 def results_module():
-    assert importlib.util.find_spec("postgres_mcp.query_limits.results") is not None, "A bounded cursor reader must cap SQL results"
-    from postgres_mcp.query_limits import results
+    assert importlib.util.find_spec("pgscope.query_limits.results") is not None, "A bounded cursor reader must cap SQL results"
+    from pgscope.query_limits import results
 
     return results
 

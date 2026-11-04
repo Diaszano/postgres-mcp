@@ -5,19 +5,19 @@ from unittest.mock import patch
 
 import pytest
 
-from postgres_mcp.application.database_service import DatabaseInspectionService
-from postgres_mcp.application.health_service import HealthInspectionService
-from postgres_mcp.database_health import DatabaseHealthTool
-from postgres_mcp.server import analyze_db_health
-from postgres_mcp.server import execute_sql
-from postgres_mcp.server import fetch_query_page
-from postgres_mcp.server import get_object_details
-from postgres_mcp.server import get_top_queries
-from postgres_mcp.server import list_databases
-from postgres_mcp.server import list_objects
-from postgres_mcp.server import list_schemas
-from postgres_mcp.sql import SafeSqlDriver
-from postgres_mcp.sql import SqlDriver
+from pgscope.application.database_service import DatabaseInspectionService
+from pgscope.application.health_service import HealthInspectionService
+from pgscope.database_health import DatabaseHealthTool
+from pgscope.server import analyze_db_health
+from pgscope.server import execute_sql
+from pgscope.server import fetch_query_page
+from pgscope.server import get_object_details
+from pgscope.server import get_top_queries
+from pgscope.server import list_databases
+from pgscope.server import list_objects
+from pgscope.server import list_schemas
+from pgscope.sql import SafeSqlDriver
+from pgscope.sql import SqlDriver
 
 
 @pytest.mark.asyncio

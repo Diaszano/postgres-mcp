@@ -38,7 +38,7 @@ def test_image_platforms_and_registry() -> None:
 
     with_config = build_step.get("with", {})
     assert "linux/amd64,linux/arm64" in with_config.get("platforms", "")
-    assert "ghcr.io/diaszano/postgres-mcp" in with_config.get("tags", "")
+    assert "ghcr.io/diaszano/pgscope" in with_config.get("tags", "")
 
 
 def test_staging_tag_uses_full_sha_and_attestations() -> None:
@@ -58,7 +58,7 @@ def test_dockerfile_oci_labels() -> None:
     root = Path(__file__).resolve().parents[2]
     dockerfile = (root / "Dockerfile").read_text(encoding="utf-8")
 
-    assert "https://github.com/diaszano/postgres-mcp" in dockerfile
+    assert "https://github.com/diaszano/pgscope" in dockerfile
     assert "org.opencontainers.image.source" in dockerfile
     assert "org.opencontainers.image.revision" in dockerfile
     assert 'org.opencontainers.image.version="${VERSION}"' in dockerfile

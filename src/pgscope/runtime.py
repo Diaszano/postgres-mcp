@@ -4,13 +4,13 @@ from dataclasses import dataclass
 from dataclasses import field
 from typing import Any
 
-from postgres_mcp.database_config import DatabaseConfig
-from postgres_mcp.observability.status import RuntimeStatus
-from postgres_mcp.pagination.cursors import InMemoryCursorStore
-from postgres_mcp.query_limits.admission import QueryAdmission
-from postgres_mcp.query_limits.config import QueryBudgetConfig
-from postgres_mcp.sql import DbConnPool
-from postgres_mcp.sql.database_registry import DatabaseRegistry
+from pgscope.database_config import DatabaseConfig
+from pgscope.observability.status import RuntimeStatus
+from pgscope.pagination.cursors import InMemoryCursorStore
+from pgscope.query_limits.admission import QueryAdmission
+from pgscope.query_limits.config import QueryBudgetConfig
+from pgscope.sql import DbConnPool
+from pgscope.sql.database_registry import DatabaseRegistry
 
 
 @dataclass

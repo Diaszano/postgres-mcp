@@ -127,7 +127,7 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/diaszano/postgres-mcp:sha-${{ needs.semantic-release.outputs.release_sha }}
+          tags: ghcr.io/diaszano/pgscope:sha-${{ needs.semantic-release.outputs.release_sha }}
           build-args: |
             REVISION=${{ needs.semantic-release.outputs.release_sha }}
             VERSION=${{ needs.semantic-release.outputs.version }}
@@ -174,4 +174,4 @@ jobs:
           IMAGE_DIGEST: ${{ needs.build-image.outputs.image_digest }}
           IMAGE_TAG: ${{ needs.semantic-release.outputs.tag }}
         run: |
-          bash scripts/ci/promote_image.sh "ghcr.io/diaszano/postgres-mcp" "$IMAGE_DIGEST" "$IMAGE_TAG"
+          bash scripts/ci/promote_image.sh "ghcr.io/diaszano/pgscope" "$IMAGE_DIGEST" "$IMAGE_TAG"
