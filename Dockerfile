@@ -1,6 +1,6 @@
 # First, build the application in the `/app` directory.
 # See `Dockerfile` for details.
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
+FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS builder
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 
 # Disable Python downloads, because we want to use the system interpreter
@@ -11,7 +11,7 @@ ENV UV_PYTHON_DOWNLOADS=0
 
 WORKDIR /app
 RUN apt-get update \
-  && apt-get install -y libpq-dev gcc \
+  && apt-get install -y --no-install-recommends libpq-dev gcc \
   && rm -rf /var/lib/apt/lists/*
 RUN --mount=type=cache,target=/root/.cache/uv \
   --mount=type=bind,source=uv.lock,target=uv.lock \
@@ -22,7 +22,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
   uv sync --frozen --no-dev
 
 
-FROM python:3.12-slim-bookworm
+FROM python:3.13-slim-bookworm
 # It is important to use the image that matches the builder, as the path to the
 # Python executable must be the same, e.g., using `python:3.11-slim-bookworm`
 # will fail.
@@ -48,12 +48,11 @@ LABEL org.opencontainers.image.vendor="Crystal DBA"
 LABEL org.opencontainers.image.url="https://www.crystaldba.ai"
 
 # Install runtime system dependencies
-RUN apt-get update && apt-get install -y \
-  libpq-dev \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  libpq5 \
   iputils-ping \
-  dnsutils \
-  net-tools \
-  && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/* \
+  && rm -rf /usr/local/lib/python3.13/site-packages/pip* /usr/local/lib/python3.13/site-packages/setuptools* /usr/local/bin/pip*
 
 COPY docker-entrypoint.sh /app/
 RUN chmod +x /app/docker-entrypoint.sh

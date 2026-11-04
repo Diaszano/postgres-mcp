@@ -18,7 +18,9 @@ CONVENTIONAL_TITLE_REGEX = re.compile(
     r"(!)?:\s+[a-zA-Z0-9].*$"
 )
 
-CONVENTIONAL_BRANCH_REGEX = re.compile(r"^(feature|bugfix|hotfix|docs|test|ci|build|perf|refactor|chore|revert)/[a-zA-Z0-9_\-\.]+$")
+CONVENTIONAL_BRANCH_REGEX = re.compile(
+    r"^(feature|bugfix|hotfix|docs|test|ci|build|perf|refactor|chore|revert)/[a-zA-Z0-9_\-\.]+(/[a-zA-Z0-9_\-\.]+)*$"
+)
 
 DEPENDABOT_BRANCH_REGEX = re.compile(r"^dependabot/[a-zA-Z0-9_\-\./]+$")
 ALLOWED_BOT_ACTORS = {"dependabot[bot]", "dependabot", "github-actions[bot]", "app/dependabot"}

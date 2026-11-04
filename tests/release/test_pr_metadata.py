@@ -19,6 +19,9 @@ from scripts.ci.check_pr_metadata import validate_pr
         ("fix: correct query parser crash", "hotfix/parser-fix", "Diaszano"),
         ("docs: update release notes", "docs/release-notes", "Diaszano"),
         ("chore(deps): bump ruff from 0.14.0 to 0.14.13", "dependabot/pip/ruff-0.14.13", "dependabot[bot]"),
+        ("build(deps): bump ruff from 0.14.0 to 0.14.13", "build/uv/ruff-0.14.13", "dependabot[bot]"),
+        ("ci(deps): bump actions/checkout from 4 to 5", "ci/github-actions/checkout-v5", "dependabot[bot]"),
+        ("build(deps): bump python from 3.12 to 3.13", "build/docker/python-3.13", "dependabot[bot]"),
         ("refactor!: redesign engine architecture", "refactor/engine", "Diaszano"),
     ],
 )

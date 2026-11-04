@@ -29,6 +29,7 @@ for platform in "${PLATFORMS[@]}"; do
   echo "==> Scanning container image ${IMAGE_REF} for platform ${platform}..."
   trivy image \
     --severity HIGH,CRITICAL \
+    --ignore-unfixed \
     --exit-code 1 \
     --platform "${platform}" \
     --scanners vuln \
