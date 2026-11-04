@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## v0.5.1 (2026-11-04)
+
+### Bug Fixes
+
+- **ci**: Configure setup-uv arch x86_64 for darwin_amd64 on macos-latest
+  ([`f68821b`](https://github.com/Diaszano/postgres-mcp/commit/f68821bbd7b8ee2c596f7c89df949d6524dd29f2))
+
+- **ci**: Use macos-latest with rosetta for darwin_amd64 binaries
+  ([`5f06119`](https://github.com/Diaszano/postgres-mcp/commit/5f06119ceae49e02ed78f3f11f74393f6e55e874))
+
+
 ## v0.5.0 (2026-11-04)
 
 ### Bug Fixes
