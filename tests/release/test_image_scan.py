@@ -42,8 +42,9 @@ def test_promotion_workflows_install_a_pinned_trivy_cli() -> None:
         workflow = yaml.load((root / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
         steps = workflow["jobs"][job_name]["steps"]
         setup = next(step for step in steps if step.get("name") == "Install Trivy")
-        assert setup["uses"] == "aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567"
-        assert setup["with"]["version"] == "v0.76.1"
+        assert "run" in setup
+        assert 'TRIVY_VERSION="0.76.1"' in setup["run"]
+        assert 'TRIVY_SHA256="c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0"' in setup["run"]
 
     security = yaml.load((root / ".github" / "workflows" / "security.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
     scan = next(step for step in security["jobs"]["repo-scan"]["steps"] if step.get("name") == "Run Trivy Repository Scan")
