@@ -2,6 +2,24 @@
 
 <!-- version list -->
 
+## v0.4.1 (2026-11-04)
+
+### Bug Fixes
+
+- **release**: Dynamic version assertion in release metadata tests
+  ([`2a0d2ca`](https://github.com/Diaszano/postgres-mcp/commit/2a0d2ca4a81b8a52b9e3cbb43ebbdc6f4be6103d))
+
+### Build System
+
+- **docker**: Upgrade to python 3.13 and configure dependabot conventions
+  ([`e056825`](https://github.com/Diaszano/postgres-mcp/commit/e0568259b8b8aaf012d277615aa39cbb26c2b001))
+
+### Code Style
+
+- Format single-line imports in test_release_metadata.py
+  ([`edbd184`](https://github.com/Diaszano/postgres-mcp/commit/edbd1841d20437c877ff3552462f4e3692bcdda8))
+
+
 ## v0.4.0 (2026-11-04)
 
 ### Bug Fixes
