@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## v0.4.2 (2026-11-04)
+
+### Bug Fixes
+
+- **ci**: Handle not found inspect output during image promotion
+  ([`0635477`](https://github.com/Diaszano/postgres-mcp/commit/0635477585b34d46bfabe3959bf5a6bcc3013d24))
+
+- **release**: Assert pyproject.toml reference dynamically in smoke test
+  ([`2d28b3b`](https://github.com/Diaszano/postgres-mcp/commit/2d28b3b66a0de6ad2c60e551357df44c079b1cd6))
+
+
 ## v0.4.1 (2026-11-04)
 
 ### Bug Fixes
