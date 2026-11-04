@@ -2,6 +2,27 @@
 
 <!-- version list -->
 
+## v0.5.0 (2026-11-04)
+
+### Bug Fixes
+
+- **ci**: Avoid non-existent replace expression in binaries workflow
+  ([`92ec207`](https://github.com/Diaszano/postgres-mcp/commit/92ec207b1136b2ce6b14071211b4b61fccc5096e))
+
+### Continuous Integration
+
+- **release**: Add multi-os matrix workflow for standalone binaries
+  ([`a5c9173`](https://github.com/Diaszano/postgres-mcp/commit/a5c91736770796f24176a11355001923c7d57b9d))
+
+### Features
+
+- **release**: Add standalone binary packaging script and module entrypoint
+  ([`6f086b9`](https://github.com/Diaszano/postgres-mcp/commit/6f086b924683b200c025f5b41bddc286529b39b6))
+
+- **release**: Automate homebrew tap cask generation and dispatch
+  ([`f7c1e0a`](https://github.com/Diaszano/postgres-mcp/commit/f7c1e0a857f71735f14768602d7184248cab2295))
+
+
 ## v0.4.2 (2026-11-04)
 
 ### Bug Fixes
